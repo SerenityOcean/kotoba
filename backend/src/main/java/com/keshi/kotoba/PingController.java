@@ -8,8 +8,17 @@ import java.util.Map;
 @RestController
 public class PingController {
 
+    private final PingMessageRepository repository;
+
+    public PingController(PingMessageRepository repository) {
+        this.repository = repository;
+    }
+
     @GetMapping("/api/ping")
     public Map<String, String> ping() {
-        return Map.of("message", "kotoba backend is alive");
+        String text = repository.findById(1L)
+                .map(PingMessage::getText)
+                .orElse("数据库里没查到");
+        return Map.of("message", text);
     }
 }
