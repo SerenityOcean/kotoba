@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16
+    container_name: kotoba-db
+    restart: always
+    environment:
+      POSTGRES_DB: kotoba
+      POSTGRES_USER: kotoba
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - kotoba_pgdata:/var/lib/postgresql/data
+
+volumes:
+  kotoba_pgdata:
