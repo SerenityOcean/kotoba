@@ -1,0 +1,16 @@
+[Unit]
+Description=kotoba backend
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+User=keshi
+WorkingDirectory=/home/keshi/kotoba
+EnvironmentFile=/home/keshi/kotoba/.env
+ExecStart=/usr/bin/java -Xmx512m -jar /home/keshi/kotoba/app.jar
+SuccessExitStatus=143
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
