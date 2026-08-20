@@ -10,4 +10,6 @@ public interface CardRepository extends JpaRepository<Card, Long> {
     List<Card> findAllByOrderByCreatedAtDesc();
 
     List<Card> findByDueAtLessThanEqualOrderByDueAtAsc(Instant now);
+
+    long countByDueAtLessThanEqual(Instant now);
 }

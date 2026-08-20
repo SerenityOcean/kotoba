@@ -52,4 +52,10 @@ public class CardController {
     public void delete(@PathVariable Long id) {
         cardService.delete(id);
     }
+
+    @PostMapping("/{id}/review")
+    public CardResponse review(@PathVariable Long id, @Valid @RequestBody ReviewRequest request) {
+        Card card = cardService.review(id, request.rating(), Instant.now());
+        return CardResponse.from(card);
+    }
 }
