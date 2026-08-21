@@ -1,136 +1,71 @@
-import { useEffect, useState } from 'react'
-import ReviewPanel from './ReviewPanel'
-import { createCard, deleteCard, fetchCards, fetchStats } from './api'
-import type { Card, Stats } from './api'
+import { NavLink, Route, Routes } from 'react-router-dom'
+import HomePage from './pages/HomePage'
+import ReviewPage from './pages/ReviewPage'
+import CardsPage from './pages/CardsPage'
 
 export default function App() {
-  const [cards, setCards] = useState<Card[]>([])
-  const [stats, setStats] = useState<Stats | null>(null)
-  const [reviewing, setReviewing] = useState(false)
-  const [front, setFront] = useState('')
-  const [back, setBack] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  async function load() {
-    try {
-      const [data, s] = await Promise.all([fetchCards(), fetchStats()])
-      setCards(data)
-      setStats(s)
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '加载失败')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    load()
-  }, [])
-
-  async function handleCreate() {
-    if (front.trim() === '') {
-      setError('正面不能为空')
-      return
-    }
-    try {
-      await createCard(front, back)
-      setFront('')
-      setBack('')
-      await load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '创建失败')
-    }
-  }
-
-  async function handleDelete(id: number) {
-    try {
-      await deleteCard(id)
-      await load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '删除失败')
-    }
-  }
-
   return (
-    <div style={{ padding: 40, fontFamily: 'system-ui', maxWidth: 700 }}>
-      <h1>kotoba</h1>
-
-      {reviewing ? (
-        <ReviewPanel
-          onFinish={() => {
-            setReviewing(false)
-            load()
-          }}
-        />
-      ) : (
-        <>
-          {stats && (
-            <div style={{ marginBottom: 20, color: '#555' }}>
-              共 {stats.totalCards} 张 · 今日待复习{' '}
-              <strong>{stats.dueToday}</strong> 张 · 今日已复习{' '}
-              {stats.reviewedToday} 张
-              {stats.dueToday > 0 && (
-                <button
-                  onClick={() => setReviewing(true)}
-                  style={{ marginLeft: 16, padding: '6px 16px' }}
-                >
-                  开始复习
-                </button>
-              )}
-            </div>
-          )}
-
-          <div style={{ marginBottom: 24 }}>
-            <input
-              value={front}
-              onChange={(e) => setFront(e.target.value)}
-              placeholder="正面（日语）"
-              style={{ marginRight: 8, padding: 6 }}
-            />
-            <input
-              value={back}
-              onChange={(e) => setBack(e.target.value)}
-              placeholder="背面（中文）"
-              style={{ marginRight: 8, padding: 6 }}
-            />
-            <button onClick={handleCreate} style={{ padding: '6px 12px' }}>
-              添加
-            </button>
+    <div className="min-h-screen bg-washi font-ui text-sumi">
+      <div className="mx-auto max-w-xl px-6 py-14 sm:py-20">
+        <header className="mb-10 flex items-baseline justify-between">
+          <div>
+            <h1 className="font-mincho text-3xl tracking-[0.3em]">言葉</h1>
+            <p className="mt-1 text-xs tracking-widest text-hai">KOTOBA</p>
           </div>
 
-          {error && <p style={{ color: 'crimson' }}>{error}</p>}
+          <nav className="flex gap-5 text-sm">
+            <NavItem to="/" end>
+              首页
+            </NavItem>
+            <NavItem to="/cards">卡片</NavItem>
+          </nav>
+        </header>
 
-          {loading ? (
-            <p>加载中…</p>
-          ) : cards.length === 0 ? (
-            <p style={{ color: '#888' }}>还没有卡片</p>
-          ) : (
-            <ul style={{ listStyle: 'none', padding: 0 }}>
-              {cards.map((card) => (
-                <li
-                  key={card.id}
-                  style={{
-                    borderBottom: '1px solid #eee',
-                    padding: '10px 0',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                  }}
-                >
-                  <span style={{ fontSize: 18 }}>{card.front}</span>
-                  <span style={{ color: '#888' }}>{card.back}</span>
-                  <span style={{ marginLeft: 'auto', fontSize: 12, color: '#aaa' }}>
-                    复习 {card.repetitions} 次
-                  </span>
-                  <button onClick={() => handleDelete(card.id)}>删除</button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
-      )}
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/review" element={<ReviewPage />} />
+          <Route path="/cards" element={<CardsPage />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </div>
+    </div>
+  )
+}
+
+function NavItem({
+  to,
+  end = false,
+  children,
+}: {
+  to: string
+  end?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        isActive
+          ? 'border-b border-sumi pb-0.5 text-sumi'
+          : 'border-b border-transparent pb-0.5 text-hai transition hover:text-sumi'
+      }
+    >
+      {children}
+    </NavLink>
+  )
+}
+
+function NotFound() {
+  return (
+    <div className="py-24 text-center">
+      <p className="font-mincho text-2xl">这里什么也没有</p>
+      <NavLink
+        to="/"
+        className="mt-6 inline-block text-sm text-ai hover:underline"
+      >
+        回首页
+      </NavLink>
     </div>
   )
 }

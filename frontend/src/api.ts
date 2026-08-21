@@ -64,3 +64,34 @@ export async function fetchStats(): Promise<Stats> {
   const res = await fetch('/api/stats')
   return handle<Stats>(res)
 }
+
+export interface ImportResult {
+  imported: number
+  skipped: number
+  skippedFronts: string[]
+}
+
+export async function importCards(
+  cards: { front: string; back: string }[],
+): Promise<ImportResult> {
+  const res = await fetch('/api/cards/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cards }),
+  })
+  return handle<ImportResult>(res)
+}
+
+/** 把粘贴的文本解析成卡片数组。支持 Tab 或逗号分隔，一行一张。 */
+export function parseImportText(text: string): { front: string; back: string }[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+    .map((line) => {
+      const sep = line.includes('\t') ? '\t' : ','
+      const [front, ...rest] = line.split(sep)
+      return { front: front.trim(), back: rest.join(sep).trim() }
+    })
+    .filter((card) => card.front !== '')
+}
