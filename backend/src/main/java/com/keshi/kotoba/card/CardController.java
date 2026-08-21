@@ -46,7 +46,10 @@ public class CardController {
         Card card = cardService.create(request.front(), request.back());
         return CardResponse.from(card);
     }
-
+    @PostMapping("/import")
+    public CardService.ImportResult importCards(@Valid @RequestBody ImportRequest request) {
+        return cardService.importCards(request.cards(), Instant.now());
+    }
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
