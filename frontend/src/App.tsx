@@ -6,10 +6,10 @@ import CardsPage from './pages/CardsPage'
 export default function App() {
   return (
     <div className="min-h-screen bg-washi font-ui text-sumi">
-      <div className="mx-auto max-w-xl px-6 py-14 sm:py-20">
-        <header className="mb-10 flex items-baseline justify-between">
+      <div className="mx-auto max-w-xl px-4 py-10 sm:px-6 sm:py-20">
+        <header className="mb-8 flex items-baseline justify-between sm:mb-10">
           <div>
-            <h1 className="font-mincho text-3xl tracking-[0.3em]">言葉</h1>
+            <h1 className="font-mincho text-2xl tracking-[0.3em] sm:text-3xl">言葉</h1>
             <p className="mt-1 text-xs tracking-widest text-hai">KOTOBA</p>
           </div>
 
@@ -60,10 +60,7 @@ function NotFound() {
   return (
     <div className="py-24 text-center">
       <p className="font-mincho text-2xl">这里什么也没有</p>
-      <NavLink
-        to="/"
-        className="mt-6 inline-block text-sm text-ai hover:underline"
-      >
+      <NavLink to="/" className="mt-6 inline-block text-sm text-ai hover:underline">
         回首页
       </NavLink>
     </div>

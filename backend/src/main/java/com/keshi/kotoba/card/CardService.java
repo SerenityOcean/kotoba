@@ -35,6 +35,13 @@ public class CardService {
         Card card = new Card(front, back, Instant.now());
         return cardRepository.save(card);
     }
+    @Transactional
+    public Card update(Long id, String front, String back) {
+        Card card = cardRepository.findById(id)
+                .orElseThrow(() -> new CardNotFoundException(id));
+        card.updateContent(front, back);
+        return cardRepository.save(card);
+    }
 
     @Transactional
     public void delete(Long id) {
