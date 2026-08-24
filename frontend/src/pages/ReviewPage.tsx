@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchDueCards, reviewCard } from '../api'
 import type { Card, Rating } from '../api'
@@ -20,16 +20,43 @@ export default function ReviewPage() {
 
   const current = queue[index]
 
-  async function handleRate(rating: Rating) {
-    if (!current) return
-    try {
-      await reviewCard(current.id, rating)
-      setRevealed(false)
-      setIndex(index + 1)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '提交失败')
+  const handleRate = useCallback(
+    async (rating: Rating) => {
+      if (!current) return
+      try {
+        await reviewCard(current.id, rating)
+        setRevealed(false)
+        setIndex((i) => i + 1)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : '提交失败')
+      }
+    },
+    [current],
+  )
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!current) return
+
+      if (!revealed) {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault()
+          setRevealed(true)
+        }
+        return
+      }
+
+      if (e.key === '1') handleRate('AGAIN')
+      if (e.key === '2') handleRate('HARD')
+      if (e.key === '3' || e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault()
+        handleRate('GOOD')
+      }
     }
-  }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [current, revealed, handleRate])
 
   if (loading) return <p className="text-sm text-hai">加载中…</p>
   if (error) return <p className="text-sm text-shu">{error}</p>
@@ -70,13 +97,17 @@ export default function ReviewPage() {
         </button>
       </div>
 
-      <div className="py-16 text-center">
-        <div className="font-mincho text-6xl leading-tight">{current.front}</div>
+      <div className="py-12 text-center sm:py-16">
+        <div className="font-mincho text-5xl leading-tight sm:text-6xl">
+          {current.front}
+        </div>
 
         {revealed && (
           <>
             <div className="mx-auto my-8 h-px w-16 bg-usu" />
-            <div className="text-2xl text-hai">{current.back || '（无背面）'}</div>
+            <div className="text-xl text-hai sm:text-2xl">
+              {current.back || '（无背面）'}
+            </div>
           </>
         )}
       </div>
@@ -85,23 +116,29 @@ export default function ReviewPage() {
         <div className="text-center">
           <button
             onClick={() => setRevealed(true)}
-            className="rounded-sm bg-ai px-8 py-3 text-sm text-washi transition hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai"
+            className="w-full rounded-sm bg-ai px-8 py-3.5 text-sm text-washi transition hover:opacity-85 sm:w-auto"
           >
             显示答案
           </button>
+          <p className="mt-4 hidden text-xs text-hai sm:block">空格 / 回车</p>
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-3">
-          <RateButton onClick={() => handleRate('AGAIN')} color="shu">
-            忘了
-          </RateButton>
-          <RateButton onClick={() => handleRate('HARD')} color="hai">
-            一般
-          </RateButton>
-          <RateButton onClick={() => handleRate('GOOD')} color="ai">
-            记住了
-          </RateButton>
-        </div>
+        <>
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            <RateButton onClick={() => handleRate('AGAIN')} color="shu" hint="1">
+              忘了
+            </RateButton>
+            <RateButton onClick={() => handleRate('HARD')} color="hai" hint="2">
+              一般
+            </RateButton>
+            <RateButton onClick={() => handleRate('GOOD')} color="ai" hint="3">
+              记住了
+            </RateButton>
+          </div>
+          <p className="mt-4 hidden text-center text-xs text-hai sm:block">
+            按数字键选择，空格 / 回车 = 记住了
+          </p>
+        </>
       )}
     </div>
   )
@@ -110,10 +147,12 @@ export default function ReviewPage() {
 function RateButton({
   onClick,
   color,
+  hint,
   children,
 }: {
   onClick: () => void
   color: 'shu' | 'hai' | 'ai'
+  hint: string
   children: React.ReactNode
 }) {
   const styles = {
@@ -125,9 +164,10 @@ function RateButton({
   return (
     <button
       onClick={onClick}
-      className={`rounded-sm border py-3 text-sm transition hover:text-washi ${styles}`}
+      className={`group rounded-sm border py-3.5 text-sm transition hover:text-washi ${styles}`}
     >
       {children}
+      <span className="ml-1.5 hidden text-xs opacity-50 sm:inline">{hint}</span>
     </button>
   )
 }

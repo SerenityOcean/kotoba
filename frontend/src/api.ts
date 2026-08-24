@@ -10,6 +10,20 @@ export interface Card {
   createdAt: string
 }
 
+export type Rating = 'AGAIN' | 'HARD' | 'GOOD'
+
+export interface Stats {
+  totalCards: number
+  dueToday: number
+  reviewedToday: number
+}
+
+export interface ImportResult {
+  imported: number
+  skipped: number
+  skippedFronts: string[]
+}
+
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {
     throw new Error(`请求失败：${res.status}`)
@@ -22,9 +36,23 @@ export async function fetchCards(): Promise<Card[]> {
   return handle<Card[]>(res)
 }
 
+export async function fetchDueCards(): Promise<Card[]> {
+  const res = await fetch('/api/cards/due')
+  return handle<Card[]>(res)
+}
+
 export async function createCard(front: string, back: string): Promise<Card> {
   const res = await fetch('/api/cards', {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ front, back }),
+  })
+  return handle<Card>(res)
+}
+
+export async function updateCard(id: number, front: string, back: string): Promise<Card> {
+  const res = await fetch(`/api/cards/${id}`, {
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ front, back }),
   })
@@ -36,19 +64,6 @@ export async function deleteCard(id: number): Promise<void> {
   if (!res.ok) {
     throw new Error(`删除失败：${res.status}`)
   }
-}
-
-export type Rating = 'AGAIN' | 'HARD' | 'GOOD'
-
-export interface Stats {
-  totalCards: number
-  dueToday: number
-  reviewedToday: number
-}
-
-export async function fetchDueCards(): Promise<Card[]> {
-  const res = await fetch('/api/cards/due')
-  return handle<Card[]>(res)
 }
 
 export async function reviewCard(id: number, rating: Rating): Promise<Card> {
@@ -63,12 +78,6 @@ export async function reviewCard(id: number, rating: Rating): Promise<Card> {
 export async function fetchStats(): Promise<Stats> {
   const res = await fetch('/api/stats')
   return handle<Stats>(res)
-}
-
-export interface ImportResult {
-  imported: number
-  skipped: number
-  skippedFronts: string[]
 }
 
 export async function importCards(

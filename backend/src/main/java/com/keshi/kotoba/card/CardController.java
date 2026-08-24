@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -46,19 +47,27 @@ public class CardController {
         Card card = cardService.create(request.front(), request.back());
         return CardResponse.from(card);
     }
+
+    @PutMapping("/{id}")
+    public CardResponse update(@PathVariable Long id, @Valid @RequestBody UpdateCardRequest request) {
+        Card card = cardService.update(id, request.front(), request.back());
+        return CardResponse.from(card);
+    }
+
     @PostMapping("/import")
     public CardService.ImportResult importCards(@Valid @RequestBody ImportRequest request) {
         return cardService.importCards(request.cards(), Instant.now());
-    }
-    @DeleteMapping("/{id}")
-    @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable Long id) {
-        cardService.delete(id);
     }
 
     @PostMapping("/{id}/review")
     public CardResponse review(@PathVariable Long id, @Valid @RequestBody ReviewRequest request) {
         Card card = cardService.review(id, request.rating(), Instant.now());
         return CardResponse.from(card);
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id) {
+        cardService.delete(id);
     }
 }

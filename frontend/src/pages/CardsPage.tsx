@@ -1,5 +1,12 @@
 import { useEffect, useState } from 'react'
-import { createCard, deleteCard, fetchCards, importCards, parseImportText } from '../api'
+import {
+  createCard,
+  deleteCard,
+  fetchCards,
+  importCards,
+  parseImportText,
+  updateCard,
+} from '../api'
 import type { Card, ImportResult } from '../api'
 
 export default function CardsPage() {
@@ -13,6 +20,10 @@ export default function CardsPage() {
   const [importText, setImportText] = useState('')
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
+
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editFront, setEditFront] = useState('')
+  const [editBack, setEditBack] = useState('')
 
   async function load() {
     try {
@@ -50,6 +61,33 @@ export default function CardsPage() {
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : '删除失败')
+    }
+  }
+
+  function startEdit(card: Card) {
+    setEditingId(card.id)
+    setEditFront(card.front)
+    setEditBack(card.back ?? '')
+    setError(null)
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditFront('')
+    setEditBack('')
+  }
+
+  async function saveEdit(id: number) {
+    if (editFront.trim() === '') {
+      setError('正面不能为空')
+      return
+    }
+    try {
+      await updateCard(id, editFront, editBack)
+      cancelEdit()
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '保存失败')
     }
   }
 
@@ -99,7 +137,7 @@ export default function CardsPage() {
 
           <button
             onClick={handleCreate}
-            className="rounded-sm border border-sumi px-5 py-2 text-sm transition hover:bg-sumi hover:text-washi"
+            className="rounded-sm border border-sumi px-5 py-2.5 text-sm transition hover:bg-sumi hover:text-washi"
           >
             添加
           </button>
@@ -124,11 +162,11 @@ export default function CardsPage() {
               placeholder={'勉強\t学习\n図書館\t图书馆\n静か\t安静'}
               className="w-full resize-y border border-usu bg-transparent p-3 font-mono text-sm placeholder:text-hai/40 focus:border-ai focus:outline-none"
             />
-            <div className="mt-2 flex items-center gap-4">
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
               <button
                 onClick={handleImport}
                 disabled={parsed.length === 0 || importing}
-                className="rounded-sm bg-ai px-5 py-2 text-sm text-washi transition hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-30"
+                className="rounded-sm bg-ai px-5 py-2.5 text-sm text-washi transition hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-30"
               >
                 {importing ? '导入中…' : `导入 ${parsed.length} 张`}
               </button>
@@ -163,24 +201,72 @@ export default function CardsPage() {
         </p>
       ) : (
         <ul>
-          {cards.map((card) => (
-            <li
-              key={card.id}
-              className="group flex items-baseline gap-4 border-b border-usu py-4"
-            >
-              <span className="font-mincho text-2xl">{card.front}</span>
-              <span className="text-sm text-hai">{card.back}</span>
-              <span className="text-xs tabular-nums text-hai">
-                {card.repetitions} 次
-              </span>
-              <button
-                onClick={() => handleDelete(card.id)}
-                className="ml-auto text-xs text-hai opacity-0 transition hover:text-shu focus-visible:opacity-100 group-hover:opacity-100"
+          {cards.map((card) =>
+            editingId === card.id ? (
+              <li key={card.id} className="border-b border-usu py-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <input
+                    value={editFront}
+                    onChange={(e) => setEditFront(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveEdit(card.id)
+                      if (e.key === 'Escape') cancelEdit()
+                    }}
+                    autoFocus
+                    className="flex-1 border-b border-ai bg-transparent pb-1 font-mincho text-xl focus:outline-none"
+                  />
+                  <input
+                    value={editBack}
+                    onChange={(e) => setEditBack(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveEdit(card.id)
+                      if (e.key === 'Escape') cancelEdit()
+                    }}
+                    className="flex-1 border-b border-ai bg-transparent pb-1 text-base focus:outline-none"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => saveEdit(card.id)}
+                      className="rounded-sm bg-ai px-4 py-1.5 text-xs text-washi transition hover:opacity-85"
+                    >
+                      保存
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      className="rounded-sm border border-usu px-4 py-1.5 text-xs text-hai transition hover:text-sumi"
+                    >
+                      取消
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ) : (
+              <li
+                key={card.id}
+                className="group flex items-baseline gap-3 border-b border-usu py-4"
               >
-                删除
-              </button>
-            </li>
-          ))}
+                <span className="font-mincho text-xl sm:text-2xl">{card.front}</span>
+                <span className="min-w-0 flex-1 truncate text-sm text-hai">
+                  {card.back}
+                </span>
+                <span className="text-xs tabular-nums text-hai">
+                  {card.repetitions} 次
+                </span>
+                <button
+                  onClick={() => startEdit(card)}
+                  className="text-xs text-hai transition hover:text-ai sm:opacity-0 sm:group-hover:opacity-100"
+                >
+                  编辑
+                </button>
+                <button
+                  onClick={() => handleDelete(card.id)}
+                  className="text-xs text-hai transition hover:text-shu sm:opacity-0 sm:group-hover:opacity-100"
+                >
+                  删除
+                </button>
+              </li>
+            ),
+          )}
         </ul>
       )}
     </div>

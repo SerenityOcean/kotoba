@@ -6,12 +6,15 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
-import java.time.temporal.ChronoUnit;
+
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
 @Entity
 @Table(name = "card")
 public class Card {
+
+    private static final double MIN_EASE_FACTOR = 1.3;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -55,6 +58,52 @@ public class Card {
         this.lapses = 0;
     }
 
+    /**
+     * 修改卡片内容。不影响复习进度。
+     */
+    public void updateContent(String front, String back) {
+        this.front = front.trim();
+        this.back = back == null ? null : back.trim();
+    }
+
+    /**
+     * 应用一次复习结果，更新调度状态。
+     *
+     * @return 本次计算出的新间隔天数
+     */
+    public int applyReview(Rating rating, Instant now) {
+        if (rating == Rating.AGAIN) {
+            this.repetitions = 0;
+            this.intervalDays = 0;
+            this.easeFactor = Math.max(MIN_EASE_FACTOR, this.easeFactor - 0.20);
+            this.lapses += 1;
+            this.dueAt = now;
+            return 0;
+        }
+
+        if (rating == Rating.HARD) {
+            this.easeFactor = Math.max(MIN_EASE_FACTOR, this.easeFactor - 0.15);
+        }
+
+        int newInterval = nextInterval(rating);
+
+        this.repetitions += 1;
+        this.intervalDays = newInterval;
+        this.dueAt = now.plus(newInterval, ChronoUnit.DAYS);
+        return newInterval;
+    }
+
+    private int nextInterval(Rating rating) {
+        if (this.repetitions == 0) {
+            return 1;
+        }
+        if (this.repetitions == 1) {
+            return 6;
+        }
+        double multiplier = (rating == Rating.HARD) ? 1.2 : this.easeFactor;
+        return (int) Math.round(this.intervalDays * multiplier);
+    }
+
     public Long getId() {
         return id;
     }
@@ -89,44 +138,5 @@ public class Card {
 
     public int getLapses() {
         return lapses;
-    }
-
-    private static final double MIN_EASE_FACTOR = 1.3;
-
-    /**
-     * 应用一次复习结果，更新调度状态。
-     * @return 本次计算出的新间隔天数
-     */
-    public int applyReview(Rating rating, Instant now) {
-        if (rating == Rating.AGAIN) {
-            this.repetitions = 0;
-            this.intervalDays = 0;
-            this.easeFactor = Math.max(MIN_EASE_FACTOR, this.easeFactor - 0.20);
-            this.lapses += 1;
-            this.dueAt = now;
-            return 0;
-        }
-
-        if (rating == Rating.HARD) {
-            this.easeFactor = Math.max(MIN_EASE_FACTOR, this.easeFactor - 0.15);
-        }
-
-        int newInterval = nextInterval(rating);
-
-        this.repetitions += 1;
-        this.intervalDays = newInterval;
-        this.dueAt = now.plus(newInterval, ChronoUnit.DAYS);
-        return newInterval;
-    }
-
-    private int nextInterval(Rating rating) {
-        if (this.repetitions == 0) {
-            return 1;
-        }
-        if (this.repetitions == 1) {
-            return 6;
-        }
-        double multiplier = (rating == Rating.HARD) ? 1.2 : this.easeFactor;
-        return (int) Math.round(this.intervalDays * multiplier);
     }
 }
