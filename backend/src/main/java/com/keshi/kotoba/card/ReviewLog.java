@@ -2,8 +2,8 @@ package com.keshi.kotoba.card;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.EnumType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -13,12 +13,15 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 
 @Entity
-@Table(name = "review_log", indexes = @Index(name = "idx_review_log_card", columnList = "cardId"))
+@Table(name = "review_log", indexes = @Index(columnList = "cardId"))
 public class ReviewLog {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(nullable = false)          // ← 新增
+    private Long userId;               // ← 新增
 
     @Column(nullable = false)
     private Long cardId;
@@ -36,7 +39,9 @@ public class ReviewLog {
     protected ReviewLog() {
     }
 
-    public ReviewLog(Long cardId, Instant reviewedAt, Rating rating, int intervalAfterDays) {
+    // ← 构造函数多了第一个参数 userId
+    public ReviewLog(Long userId, Long cardId, Instant reviewedAt, Rating rating, int intervalAfterDays) {
+        this.userId = userId;
         this.cardId = cardId;
         this.reviewedAt = reviewedAt;
         this.rating = rating;
@@ -45,6 +50,10 @@ public class ReviewLog {
 
     public Long getId() {
         return id;
+    }
+
+    public Long getUserId() {           // ← 新增
+        return userId;
     }
 
     public Long getCardId() {

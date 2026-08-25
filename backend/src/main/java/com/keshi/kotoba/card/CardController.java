@@ -1,5 +1,6 @@
 package com.keshi.kotoba.card;
 
+import com.keshi.kotoba.auth.CurrentUser;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -27,7 +28,7 @@ public class CardController {
 
     @GetMapping
     public List<CardResponse> list() {
-        return cardService.findAll()
+        return cardService.findAll(CurrentUser.id())
                 .stream()
                 .map(CardResponse::from)
                 .toList();
@@ -35,7 +36,7 @@ public class CardController {
 
     @GetMapping("/due")
     public List<CardResponse> due() {
-        return cardService.findDue(Instant.now())
+        return cardService.findDue(CurrentUser.id(), Instant.now())
                 .stream()
                 .map(CardResponse::from)
                 .toList();
@@ -44,30 +45,30 @@ public class CardController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public CardResponse create(@Valid @RequestBody CreateCardRequest request) {
-        Card card = cardService.create(request.front(), request.back());
-        return CardResponse.from(card);
+        return CardResponse.from(
+                cardService.create(CurrentUser.id(), request.front(), request.back()));
     }
 
     @PutMapping("/{id}")
     public CardResponse update(@PathVariable Long id, @Valid @RequestBody UpdateCardRequest request) {
-        Card card = cardService.update(id, request.front(), request.back());
-        return CardResponse.from(card);
+        return CardResponse.from(
+                cardService.update(CurrentUser.id(), id, request.front(), request.back()));
     }
 
     @PostMapping("/import")
     public CardService.ImportResult importCards(@Valid @RequestBody ImportRequest request) {
-        return cardService.importCards(request.cards(), Instant.now());
+        return cardService.importCards(CurrentUser.id(), request.cards(), Instant.now());
     }
 
     @PostMapping("/{id}/review")
     public CardResponse review(@PathVariable Long id, @Valid @RequestBody ReviewRequest request) {
-        Card card = cardService.review(id, request.rating(), Instant.now());
-        return CardResponse.from(card);
+        return CardResponse.from(
+                cardService.review(CurrentUser.id(), id, request.rating(), Instant.now()));
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
-        cardService.delete(id);
+        cardService.delete(CurrentUser.id(), id);
     }
 }

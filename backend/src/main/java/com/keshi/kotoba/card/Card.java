@@ -6,19 +6,28 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 
+/**
+ * 卡片内容。学习进度不在这里 —— 见 {@link UserCardState}，
+ * 因为同一个词不同用户的进度不同。
+ */
 @Entity
-@Table(name = "card")
+@Table(
+        name = "card",
+        uniqueConstraints = @UniqueConstraint(
+                name = "uk_card_owner_front", columnNames = {"owner_id", "front"})
+)
 public class Card {
-
-    private static final double MIN_EASE_FACTOR = 1.3;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(nullable = false)
+    private Long ownerId;
 
     @Column(nullable = false, columnDefinition = "text")
     private String front;
@@ -29,83 +38,30 @@ public class Card {
     @Column(nullable = false)
     private Instant createdAt;
 
-    @Column(nullable = false)
-    private Instant dueAt;
-
-    @Column(nullable = false)
-    private int intervalDays;
-
-    @Column(nullable = false)
-    private int repetitions;
-
-    @Column(nullable = false)
-    private double easeFactor;
-
-    @Column(nullable = false)
-    private int lapses;
-
     protected Card() {
     }
 
-    public Card(String front, String back, Instant now) {
+    public Card(Long ownerId, String front, String back, Instant now) {
+        this.ownerId = ownerId;
         this.front = front;
         this.back = back;
         this.createdAt = now;
-        this.dueAt = now;
-        this.intervalDays = 0;
-        this.repetitions = 0;
-        this.easeFactor = 2.5;
-        this.lapses = 0;
     }
 
     /**
-     * 修改卡片内容。不影响复习进度。
+     * 修改卡片内容。不影响复习进度 —— 改错别字不该重置进度。
      */
     public void updateContent(String front, String back) {
         this.front = front.trim();
         this.back = back == null ? null : back.trim();
     }
 
-    /**
-     * 应用一次复习结果，更新调度状态。
-     *
-     * @return 本次计算出的新间隔天数
-     */
-    public int applyReview(Rating rating, Instant now) {
-        if (rating == Rating.AGAIN) {
-            this.repetitions = 0;
-            this.intervalDays = 0;
-            this.easeFactor = Math.max(MIN_EASE_FACTOR, this.easeFactor - 0.20);
-            this.lapses += 1;
-            this.dueAt = now;
-            return 0;
-        }
-
-        if (rating == Rating.HARD) {
-            this.easeFactor = Math.max(MIN_EASE_FACTOR, this.easeFactor - 0.15);
-        }
-
-        int newInterval = nextInterval(rating);
-
-        this.repetitions += 1;
-        this.intervalDays = newInterval;
-        this.dueAt = now.plus(newInterval, ChronoUnit.DAYS);
-        return newInterval;
-    }
-
-    private int nextInterval(Rating rating) {
-        if (this.repetitions == 0) {
-            return 1;
-        }
-        if (this.repetitions == 1) {
-            return 6;
-        }
-        double multiplier = (rating == Rating.HARD) ? 1.2 : this.easeFactor;
-        return (int) Math.round(this.intervalDays * multiplier);
-    }
-
     public Long getId() {
         return id;
+    }
+
+    public Long getOwnerId() {
+        return ownerId;
     }
 
     public String getFront() {
@@ -118,25 +74,5 @@ public class Card {
 
     public Instant getCreatedAt() {
         return createdAt;
-    }
-
-    public Instant getDueAt() {
-        return dueAt;
-    }
-
-    public int getIntervalDays() {
-        return intervalDays;
-    }
-
-    public int getRepetitions() {
-        return repetitions;
-    }
-
-    public double getEaseFactor() {
-        return easeFactor;
-    }
-
-    public int getLapses() {
-        return lapses;
     }
 }
