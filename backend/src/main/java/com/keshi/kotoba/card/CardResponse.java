@@ -14,17 +14,21 @@ public record CardResponse(
         Instant createdAt
 ) {
 
-    public static CardResponse from(Card card) {
+    public static CardResponse from(Card card, UserCardState state) {
         return new CardResponse(
                 card.getId(),
                 card.getFront(),
                 card.getBack(),
-                card.getDueAt(),
-                card.getIntervalDays(),
-                card.getRepetitions(),
-                card.getEaseFactor(),
-                card.getLapses(),
+                state.getDueAt(),
+                state.getIntervalDays(),
+                state.getRepetitions(),
+                state.getEaseFactor(),
+                state.getLapses(),
                 card.getCreatedAt()
         );
+    }
+
+    public static CardResponse from(CardService.CardWithState pair) {
+        return from(pair.card(), pair.state());
     }
 }

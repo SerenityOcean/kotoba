@@ -1,5 +1,6 @@
 package com.keshi.kotoba.card;
 
+import com.keshi.kotoba.auth.CurrentUser;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -16,6 +17,6 @@ public class StatsController {
 
     @GetMapping("/api/stats")
     public CardService.Stats stats() {
-        return cardService.stats(Instant.now());
+        return cardService.stats(CurrentUser.id(), Instant.now());
     }
 }
