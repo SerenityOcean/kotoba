@@ -1,6 +1,7 @@
 package com.keshi.kotoba.card;
 
-import com.keshi.kotoba.auth.CurrentUser;
+import com.keshi.kotoba.auth.AppUserPrincipal;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -16,7 +17,7 @@ public class StatsController {
     }
 
     @GetMapping("/api/stats")
-    public CardService.Stats stats() {
-        return cardService.stats(CurrentUser.id(), Instant.now());
+    public CardService.Stats stats(@AuthenticationPrincipal AppUserPrincipal user) {
+        return cardService.stats(user.id(), Instant.now());
     }
 }

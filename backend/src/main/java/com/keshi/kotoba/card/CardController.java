@@ -1,8 +1,9 @@
 package com.keshi.kotoba.card;
 
-import com.keshi.kotoba.auth.CurrentUser;
+import com.keshi.kotoba.auth.AppUserPrincipal;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,16 +28,16 @@ public class CardController {
     }
 
     @GetMapping
-    public List<CardResponse> list() {
-        return cardService.findAll(CurrentUser.id())
+    public List<CardResponse> list(@AuthenticationPrincipal AppUserPrincipal user) {
+        return cardService.findAll(user.id())
                 .stream()
                 .map(CardResponse::from)
                 .toList();
     }
 
     @GetMapping("/due")
-    public List<CardResponse> due() {
-        return cardService.findDue(CurrentUser.id(), Instant.now())
+    public List<CardResponse> due(@AuthenticationPrincipal AppUserPrincipal user) {
+        return cardService.findDue(user.id(), Instant.now())
                 .stream()
                 .map(CardResponse::from)
                 .toList();
@@ -44,31 +45,37 @@ public class CardController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public CardResponse create(@Valid @RequestBody CreateCardRequest request) {
+    public CardResponse create(@AuthenticationPrincipal AppUserPrincipal user,
+                               @Valid @RequestBody CreateCardRequest request) {
         return CardResponse.from(
-                cardService.create(CurrentUser.id(), request.front(), request.back()));
+                cardService.create(user.id(), request.front(), request.back()));
     }
 
     @PutMapping("/{id}")
-    public CardResponse update(@PathVariable Long id, @Valid @RequestBody UpdateCardRequest request) {
+    public CardResponse update(@AuthenticationPrincipal AppUserPrincipal user,
+                               @PathVariable Long id,
+                               @Valid @RequestBody UpdateCardRequest request) {
         return CardResponse.from(
-                cardService.update(CurrentUser.id(), id, request.front(), request.back()));
+                cardService.update(user.id(), id, request.front(), request.back()));
     }
 
     @PostMapping("/import")
-    public CardService.ImportResult importCards(@Valid @RequestBody ImportRequest request) {
-        return cardService.importCards(CurrentUser.id(), request.cards(), Instant.now());
+    public CardService.ImportResult importCards(@AuthenticationPrincipal AppUserPrincipal user,
+                                                @Valid @RequestBody ImportRequest request) {
+        return cardService.importCards(user.id(), request.cards(), Instant.now());
     }
 
     @PostMapping("/{id}/review")
-    public CardResponse review(@PathVariable Long id, @Valid @RequestBody ReviewRequest request) {
+    public CardResponse review(@AuthenticationPrincipal AppUserPrincipal user,
+                               @PathVariable Long id,
+                               @Valid @RequestBody ReviewRequest request) {
         return CardResponse.from(
-                cardService.review(CurrentUser.id(), id, request.rating(), Instant.now()));
+                cardService.review(user.id(), id, request.rating(), Instant.now()));
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable Long id) {
-        cardService.delete(CurrentUser.id(), id);
+    public void delete(@AuthenticationPrincipal AppUserPrincipal user, @PathVariable Long id) {
+        cardService.delete(user.id(), id);
     }
 }

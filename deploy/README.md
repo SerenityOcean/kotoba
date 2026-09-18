@@ -22,6 +22,12 @@
     npm run build
     scp -r dist/* keshi@<IP>:/var/www/kotoba/
 
+## 登录相关
+
+- session 存在后端内存里，`systemctl restart kotoba` 之后所有人要重新登录。
+- 会话 cookie 是 `SameSite=Strict`；等哪天上了 HTTPS，在 `.env` 里补一条
+  `SERVER_SERVLET_SESSION_COOKIE_SECURE=true`。
+
 ## 排查
 
     sudo systemctl status kotoba
