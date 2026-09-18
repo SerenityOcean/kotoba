@@ -13,6 +13,12 @@ import java.time.Instant;
 @Table(name = "app_user")
 public class AppUser {
 
+    /**
+     * V2 迁移给 keshi 插的占位密码。不是合法的 bcrypt 串，所以任何密码都匹配不上；
+     * 用同名走一次注册即可"认领"这个账号（见 {@link AuthService#register}）。
+     */
+    public static final String PLACEHOLDER_PASSWORD_HASH = "NOT_SET";
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -33,6 +39,15 @@ public class AppUser {
         this.username = username;
         this.passwordHash = passwordHash;
         this.createdAt = createdAt;
+    }
+
+    public boolean hasPlaceholderPassword() {
+        return PLACEHOLDER_PASSWORD_HASH.equals(passwordHash);
+    }
+
+    /** 认领占位账号时把 NOT_SET 换成真哈希。传进来的必须已经是 encode 过的。 */
+    void assignPassword(String passwordHash) {
+        this.passwordHash = passwordHash;
     }
 
     public Long getId() {
