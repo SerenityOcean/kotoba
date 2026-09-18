@@ -10,13 +10,15 @@ import java.time.Instant;
 public class StatsController {
 
     private final CardService cardService;
+    private final CurrentUser currentUser;
 
-    public StatsController(CardService cardService) {
+    public StatsController(CardService cardService, CurrentUser currentUser) {
         this.cardService = cardService;
+        this.currentUser = currentUser;
     }
 
     @GetMapping("/api/stats")
     public CardService.Stats stats() {
-        return cardService.stats(CurrentUser.id(), Instant.now());
+        return cardService.stats(currentUser.id(), Instant.now());
     }
 }

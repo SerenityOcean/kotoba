@@ -21,14 +21,16 @@ import java.util.List;
 public class CardController {
 
     private final CardService cardService;
+    private final CurrentUser currentUser;
 
-    public CardController(CardService cardService) {
+    public CardController(CardService cardService, CurrentUser currentUser) {
         this.cardService = cardService;
+        this.currentUser = currentUser;
     }
 
     @GetMapping
     public List<CardResponse> list() {
-        return cardService.findAll(CurrentUser.id())
+        return cardService.findAll(currentUser.id())
                 .stream()
                 .map(CardResponse::from)
                 .toList();
@@ -36,7 +38,7 @@ public class CardController {
 
     @GetMapping("/due")
     public List<CardResponse> due() {
-        return cardService.findDue(CurrentUser.id(), Instant.now())
+        return cardService.findDue(currentUser.id(), Instant.now())
                 .stream()
                 .map(CardResponse::from)
                 .toList();
@@ -46,29 +48,29 @@ public class CardController {
     @ResponseStatus(HttpStatus.CREATED)
     public CardResponse create(@Valid @RequestBody CreateCardRequest request) {
         return CardResponse.from(
-                cardService.create(CurrentUser.id(), request.front(), request.back()));
+                cardService.create(currentUser.id(), request.front(), request.back()));
     }
 
     @PutMapping("/{id}")
     public CardResponse update(@PathVariable Long id, @Valid @RequestBody UpdateCardRequest request) {
         return CardResponse.from(
-                cardService.update(CurrentUser.id(), id, request.front(), request.back()));
+                cardService.update(currentUser.id(), id, request.front(), request.back()));
     }
 
     @PostMapping("/import")
     public CardService.ImportResult importCards(@Valid @RequestBody ImportRequest request) {
-        return cardService.importCards(CurrentUser.id(), request.cards(), Instant.now());
+        return cardService.importCards(currentUser.id(), request.cards(), Instant.now());
     }
 
     @PostMapping("/{id}/review")
     public CardResponse review(@PathVariable Long id, @Valid @RequestBody ReviewRequest request) {
         return CardResponse.from(
-                cardService.review(CurrentUser.id(), id, request.rating(), Instant.now()));
+                cardService.review(currentUser.id(), id, request.rating(), Instant.now()));
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
-        cardService.delete(CurrentUser.id(), id);
+        cardService.delete(currentUser.id(), id);
     }
 }

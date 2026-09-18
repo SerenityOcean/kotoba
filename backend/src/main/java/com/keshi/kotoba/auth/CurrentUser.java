@@ -1,22 +1,30 @@
 package com.keshi.kotoba.auth;
 
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+
 /**
- * 临时接缝：当前所有数据都属于 V2 迁移脚本插入的那个用户。
- * 唯一职责是"以后从这里换成真的"。
- *
- * TODO(auth): M4-3 接入 Spring Security 后，改为
- *   SecurityContextHolder.getContext().getAuthentication()
- * 并删除这个类。
+ * 取当前登录用户的 id。
+ * SecurityContextHolder 用 ThreadLocal 存当前请求的认证信息，
+ * 由 Spring Security 的过滤器在进 Controller 之前放进去。
  */
-public final class CurrentUser {
+@Component
+public class CurrentUser {
 
-    /** V2 里 app_user 的 identity 从 1 开始，插入的第一行就是这个 id。 */
-    private static final Long DEV_USER_ID = 1L;
+    private final AppUserRepository userRepository;
 
-    private CurrentUser() {
+    public CurrentUser(AppUserRepository userRepository) {
+        this.userRepository = userRepository;
     }
 
-    public static Long id() {
-        return DEV_USER_ID;
+    public Long id() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated()) {
+            throw new IllegalStateException("no authenticated user");
+        }
+        return userRepository.findByUsername(auth.getName())
+                .orElseThrow(() -> new IllegalStateException("user not found: " + auth.getName()))
+                .getId();
     }
 }
