@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchDecks, fetchDueCards, reviewCard } from '../api'
+import Furigana from '../components/Furigana'
 import type { Card, Rating } from '../api'
 
 export default function ReviewPage() {
@@ -115,14 +116,14 @@ export default function ReviewPage() {
 
       <div className="py-12 text-center sm:py-16">
         <div className="font-mincho text-5xl leading-tight sm:text-6xl">
-          {current.front}
+          <Furigana text={current.front} />
         </div>
 
         {revealed && (
           <>
             <div className="mx-auto my-8 h-px w-16 bg-usu" />
-            <div className="text-xl text-hai sm:text-2xl">
-              {current.back || '（无背面）'}
+            <div className="ruby-block whitespace-pre-line text-xl text-hai sm:text-2xl">
+              {current.back ? <Furigana text={current.back} /> : '（无背面）'}
             </div>
           </>
         )}

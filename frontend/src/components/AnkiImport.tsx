@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { buildCards, guessMapping, parseApkg } from '../anki'
 import type { AnkiNoteType, FieldMapping } from '../anki'
 import { importCards } from '../api'
+import Furigana from './Furigana'
 import type { ImportResult } from '../api'
 
 export default function AnkiImport({
@@ -156,7 +157,7 @@ export default function AnkiImport({
                 />
                 <span className="text-hai">保留注音</span>
                 <span className="font-mincho">
-                  {mapping.keepRuby ? '諦(あきら)める' : '諦める'}
+                  {mapping.keepRuby ? <Furigana text="諦[あきら]める" /> : '諦める'}
                 </span>
               </label>
 
@@ -197,9 +198,11 @@ export default function AnkiImport({
               <ul className="space-y-2">
                 {cards.slice(0, 3).map((card, i) => (
                   <li key={i} className="border-l-2 border-usu pl-3">
-                    <div className="font-mincho text-lg">{card.front}</div>
-                    <div className="whitespace-pre-line text-sm text-hai">
-                      {card.back || '（背面为空）'}
+                    <div className="font-mincho text-lg">
+                      <Furigana text={card.front} />
+                    </div>
+                    <div className="ruby-block whitespace-pre-line text-sm text-hai">
+                      {card.back ? <Furigana text={card.back} /> : '（背面为空）'}
                     </div>
                   </li>
                 ))}

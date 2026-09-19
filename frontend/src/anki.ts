@@ -134,6 +134,9 @@ function readNoteTypes(db: SqlDatabase): Map<string, { name: string; fields: str
 /**
  * 把一个字段的 HTML 洗成纯文本：
  * 去掉音频/图片引用，ruby 注音按需保留，其余标签和实体交给浏览器解析。
+ *
+ * 注音保留成 Anki 的方括号记法 `諦[あきら]める`，前端的 Furigana
+ * 组件再把它渲染成真正的振り仮名。
  */
 export function cleanField(raw: string, keepRuby: boolean): string {
   let s = raw
@@ -146,7 +149,7 @@ export function cleanField(raw: string, keepRuby: boolean): string {
       .map((m) => m[1])
       .join('')
     const base = inner.replace(/<rt>[\s\S]*?<\/rt>/gi, '').replace(/<\/?rb>/gi, '')
-    return keepRuby && reading ? `${base}(${reading})` : base
+    return keepRuby && reading ? `${base}[${reading}]` : base
   })
 
   s = s.replace(/<br\s*\/?>/gi, ' ').replace(/<\/(div|p|li|tr)>/gi, ' ')
@@ -182,6 +185,8 @@ export function buildCards(
 const BACK_FIELD_NAMES = new Set([
   '意味', '意思', '中文', '翻译', '訳', '意义', 'meaning', 'back', '答え', '解释',
   '読み方', '読み', 'reading', '读音', '品詞', '词性',
+  // 例句：带注音的那条 + 它的中文。第二条例句默认不选，背面太长反而不好用
+  '例文1ルビ', '例文1中文', '例文', '例句', '例文1', 'example',
 ])
 
 /** 猜一个初始映射：第一个字段当正面，答案类字段拼成背面。 */
@@ -195,6 +200,7 @@ export function guessMapping(noteType: AnkiNoteType): FieldMapping {
     frontIndex: 0,
     backIndexes: backIndexes.length > 0 ? backIndexes : [1],
     keepRuby: true,
-    separator: ' · ',
+    // 背面通常有读音、词性、释义、例句好几段，换行比中点好读
+    separator: '\n',
   }
 }

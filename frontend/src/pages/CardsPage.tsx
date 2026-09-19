@@ -10,6 +10,7 @@ import {
 } from '../api'
 import type { Card, Deck, ImportResult } from '../api'
 import AnkiImport from '../components/AnkiImport'
+import Furigana from '../components/Furigana'
 import DeckBar from '../components/DeckBar'
 
 export default function CardsPage() {
@@ -293,9 +294,11 @@ export default function CardsPage() {
                 key={card.id}
                 className="group flex items-baseline gap-3 border-b border-usu py-4"
               >
-                <span className="font-mincho text-xl sm:text-2xl">{card.front}</span>
+                <span className="font-mincho text-xl sm:text-2xl">
+                  <Furigana text={card.front} />
+                </span>
                 <span className="min-w-0 flex-1 truncate text-sm text-hai">
-                  {card.back}
+                  {card.back && <Furigana text={card.back} />}
                 </span>
                 {deckId === null && (
                   <span className="hidden shrink-0 text-xs text-hai/70 sm:inline">
