@@ -18,7 +18,7 @@ import java.time.Instant;
 @Table(
         name = "card",
         uniqueConstraints = @UniqueConstraint(
-                name = "uk_card_owner_front", columnNames = {"owner_id", "front"})
+                name = "uk_card_deck_front", columnNames = {"deck_id", "front"})
 )
 public class Card {
 
@@ -28,6 +28,9 @@ public class Card {
 
     @Column(nullable = false)
     private Long ownerId;
+
+    @Column(nullable = false)
+    private Long deckId;
 
     @Column(nullable = false, columnDefinition = "text")
     private String front;
@@ -41,8 +44,9 @@ public class Card {
     protected Card() {
     }
 
-    public Card(Long ownerId, String front, String back, Instant now) {
+    public Card(Long ownerId, Long deckId, String front, String back, Instant now) {
         this.ownerId = ownerId;
+        this.deckId = deckId;
         this.front = front;
         this.back = back;
         this.createdAt = now;
@@ -62,6 +66,15 @@ public class Card {
 
     public Long getOwnerId() {
         return ownerId;
+    }
+
+    public Long getDeckId() {
+        return deckId;
+    }
+
+    /** 把卡片挪到另一个包。正面在目标包里重名的话，唯一约束会拦下。 */
+    public void moveTo(Long deckId) {
+        this.deckId = deckId;
     }
 
     public String getFront() {

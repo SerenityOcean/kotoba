@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -27,17 +28,20 @@ public class CardController {
         this.cardService = cardService;
     }
 
+    /** deckId 不传就是全部包。 */
     @GetMapping
-    public List<CardResponse> list(@AuthenticationPrincipal AppUserPrincipal user) {
-        return cardService.findAll(user.id())
+    public List<CardResponse> list(@AuthenticationPrincipal AppUserPrincipal user,
+                                   @RequestParam(required = false) Long deckId) {
+        return cardService.findAll(user.id(), deckId)
                 .stream()
                 .map(CardResponse::from)
                 .toList();
     }
 
     @GetMapping("/due")
-    public List<CardResponse> due(@AuthenticationPrincipal AppUserPrincipal user) {
-        return cardService.findDue(user.id(), Instant.now())
+    public List<CardResponse> due(@AuthenticationPrincipal AppUserPrincipal user,
+                                  @RequestParam(required = false) Long deckId) {
+        return cardService.findDue(user.id(), deckId, Instant.now())
                 .stream()
                 .map(CardResponse::from)
                 .toList();
@@ -46,9 +50,10 @@ public class CardController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public CardResponse create(@AuthenticationPrincipal AppUserPrincipal user,
+                               @RequestParam(required = false) Long deckId,
                                @Valid @RequestBody CreateCardRequest request) {
         return CardResponse.from(
-                cardService.create(user.id(), request.front(), request.back()));
+                cardService.create(user.id(), deckId, request.front(), request.back()));
     }
 
     @PutMapping("/{id}")
@@ -62,7 +67,7 @@ public class CardController {
     @PostMapping("/import")
     public CardService.ImportResult importCards(@AuthenticationPrincipal AppUserPrincipal user,
                                                 @Valid @RequestBody ImportRequest request) {
-        return cardService.importCards(user.id(), request.cards(), Instant.now());
+        return cardService.importCards(user.id(), request.deckName(), request.cards(), Instant.now());
     }
 
     @PostMapping("/{id}/review")

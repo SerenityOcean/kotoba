@@ -1,11 +1,14 @@
 package com.keshi.kotoba.card;
 
+import com.keshi.kotoba.deck.Deck;
+import com.keshi.kotoba.deck.DeckService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,18 +22,26 @@ public class CardService {
     private final CardRepository cardRepository;
     private final UserCardStateRepository stateRepository;
     private final ReviewLogRepository reviewLogRepository;
+    private final DeckService deckService;
 
     public CardService(CardRepository cardRepository,
                        UserCardStateRepository stateRepository,
-                       ReviewLogRepository reviewLogRepository) {
+                       ReviewLogRepository reviewLogRepository,
+                       DeckService deckService) {
         this.cardRepository = cardRepository;
         this.stateRepository = stateRepository;
         this.reviewLogRepository = reviewLogRepository;
+        this.deckService = deckService;
     }
 
+    /** deckId 为 null 表示不限包。 */
     @Transactional(readOnly = true)
-    public List<CardWithState> findAll(Long userId) {
-        List<Card> cards = cardRepository.findByOwnerIdOrderByCreatedAtDesc(userId);
+    public List<CardWithState> findAll(Long userId, Long deckId) {
+        List<Card> cards = deckId == null
+                ? cardRepository.findByOwnerIdOrderByCreatedAtDesc(userId)
+                // 先校验包归属，再按包查，免得拿别人的包 id 来翻卡片
+                : cardRepository.findByDeckIdOrderByCreatedAtDesc(deckService.get(userId, deckId).getId());
+
         Map<Long, UserCardState> byCardId = stateRepository.findByUserId(userId).stream()
                 .collect(Collectors.toMap(UserCardState::getCardId, Function.identity()));
         // 不变量：每张卡都有对应的 state（建卡时一起建，V2 迁移时一起搬）
@@ -40,10 +51,11 @@ public class CardService {
     }
 
     @Transactional(readOnly = true)
-    public List<CardWithState> findDue(Long userId, Instant now) {
+    public List<CardWithState> findDue(Long userId, Long deckId, Instant now) {
         // 先查状态表（排序条件在这边），再按 id 捞回卡片内容
-        List<UserCardState> dueStates =
-                stateRepository.findByUserIdAndDueAtLessThanEqualOrderByDueAtAsc(userId, now);
+        List<UserCardState> dueStates = deckId == null
+                ? stateRepository.findByUserIdAndDueAtLessThanEqualOrderByDueAtAsc(userId, now)
+                : stateRepository.findDueByDeck(userId, deckService.get(userId, deckId).getId(), now);
 
         List<Long> cardIds = dueStates.stream().map(UserCardState::getCardId).toList();
         Map<Long, Card> byId = cardRepository.findAllById(cardIds).stream()
@@ -55,10 +67,13 @@ public class CardService {
                 .toList();
     }
 
+    /** deckId 为 null 就放进默认包。 */
     @Transactional
-    public CardWithState create(Long userId, String front, String back) {
+    public CardWithState create(Long userId, Long deckId, String front, String back) {
         Instant now = Instant.now();
-        Card card = cardRepository.save(new Card(userId, front, back, now));
+        Deck deck = deckId == null ? deckService.defaultDeck(userId) : deckService.get(userId, deckId);
+
+        Card card = cardRepository.save(new Card(userId, deck.getId(), front, back, now));
         UserCardState state = stateRepository.save(new UserCardState(userId, card.getId(), now));
         return new CardWithState(card, state);
     }
@@ -98,16 +113,25 @@ public class CardService {
         return new CardWithState(card, state);
     }
 
+    /**
+     * 批量导入。deckName 为空就进默认包，否则按名字找包、没有就新建
+     * —— 导入 Anki 包时用包名，这样一个包就是一组卡片。
+     */
     @Transactional
-    public ImportResult importCards(Long userId, List<CreateCardRequest> requests, Instant now) {
+    public ImportResult importCards(Long userId, String deckName,
+                                    List<CreateCardRequest> requests, Instant now) {
+        Deck deck = deckName == null || deckName.isBlank()
+                ? deckService.defaultDeck(userId)
+                : deckService.findOrCreate(userId, deckName);
+
         // 1. 批次内去重，保留第一次出现的
         Map<String, CreateCardRequest> unique = new LinkedHashMap<>();
         for (CreateCardRequest request : requests) {
             unique.putIfAbsent(request.front().trim(), request);
         }
 
-        // 2. 一次查出这个用户库里已有哪些
-        Set<String> existing = cardRepository.findExistingFronts(userId, unique.keySet());
+        // 2. 一次查出这个包里已有哪些
+        Set<String> existing = cardRepository.findExistingFronts(deck.getId(), unique.keySet());
 
         // 3. 分成要导入的和要跳过的
         List<Card> toSave = new ArrayList<>();
@@ -119,7 +143,7 @@ public class CardService {
                 skipped.add(front);
             } else {
                 String back = entry.getValue().back();
-                toSave.add(new Card(userId, front, back == null ? null : back.trim(), now));
+                toSave.add(new Card(userId, deck.getId(), front, back == null ? null : back.trim(), now));
             }
         }
 
@@ -128,7 +152,36 @@ public class CardService {
                 .map(c -> new UserCardState(userId, c.getId(), now))
                 .toList());
 
-        return new ImportResult(saved.size(), skipped.size(), skipped);
+        return new ImportResult(deck.getId(), deck.getName(), saved.size(), skipped.size(), skipped);
+    }
+
+    /** 删包连卡片一起删 —— 包是卡片的容器，空留一个壳没意义。 */
+    @Transactional
+    public void deleteDeck(Long userId, Long deckId) {
+        Deck deck = deckService.get(userId, deckId);
+        List<Long> cardIds = cardRepository.findIdsByDeckId(deck.getId());
+
+        if (!cardIds.isEmpty()) {
+            reviewLogRepository.deleteByCardIdIn(cardIds);
+            stateRepository.deleteByCardIdIn(cardIds);
+            cardRepository.deleteByDeckId(deck.getId());
+        }
+        deckService.delete(userId, deck.getId());
+    }
+
+    /** 每个包的卡片数和到期数，列表页一次算完。 */
+    @Transactional(readOnly = true)
+    public Map<Long, DeckCounts> countsByDeck(Long userId, Instant now) {
+        Map<Long, DeckCounts> result = new HashMap<>();
+
+        for (DeckCount row : cardRepository.countByDeck(userId)) {
+            result.put(row.getDeckId(), new DeckCounts(row.getCount(), 0));
+        }
+        for (DeckCount row : stateRepository.countDueByDeck(userId, now)) {
+            DeckCounts current = result.getOrDefault(row.getDeckId(), new DeckCounts(0, 0));
+            result.put(row.getDeckId(), new DeckCounts(current.cards(), row.getCount()));
+        }
+        return result;
     }
 
     @Transactional(readOnly = true)
@@ -147,6 +200,10 @@ public class CardService {
     public record Stats(long totalCards, long dueToday, long reviewedToday) {
     }
 
-    public record ImportResult(int imported, int skipped, List<String> skippedFronts) {
+    public record DeckCounts(long cards, long due) {
+    }
+
+    public record ImportResult(Long deckId, String deckName,
+                               int imported, int skipped, List<String> skippedFronts) {
     }
 }

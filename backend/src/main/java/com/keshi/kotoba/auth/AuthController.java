@@ -1,5 +1,6 @@
 package com.keshi.kotoba.auth;
 
+import com.keshi.kotoba.web.ApiError;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;

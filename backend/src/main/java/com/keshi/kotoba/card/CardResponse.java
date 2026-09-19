@@ -4,6 +4,7 @@ import java.time.Instant;
 
 public record CardResponse(
         Long id,
+        Long deckId,
         String front,
         String back,
         Instant dueAt,
@@ -17,6 +18,7 @@ public record CardResponse(
     public static CardResponse from(Card card, UserCardState state) {
         return new CardResponse(
                 card.getId(),
+                card.getDeckId(),
                 card.getFront(),
                 card.getBack(),
                 state.getDueAt(),
