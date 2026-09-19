@@ -1,5 +1,6 @@
 export interface Card {
   id: number
+  deckId: number
   front: string
   back: string | null
   dueAt: string
@@ -19,9 +20,19 @@ export interface Stats {
 }
 
 export interface ImportResult {
+  deckId: number
+  deckName: string
   imported: number
   skipped: number
   skippedFronts: string[]
+}
+
+export interface Deck {
+  id: number
+  name: string
+  cardCount: number
+  dueCount: number
+  createdAt: string
 }
 
 /** 会话过期时所有请求都会撞 401，AuthProvider 听这个事件把登录态清掉。 */
@@ -63,18 +74,19 @@ async function handle<T>(res: Response, silent401 = false): Promise<T> {
   return res.json() as Promise<T>
 }
 
-export async function fetchCards(): Promise<Card[]> {
-  const res = await fetch('/api/cards')
+/** deckId 不传就是全部包。 */
+export async function fetchCards(deckId?: number): Promise<Card[]> {
+  const res = await fetch(deckId ? `/api/cards?deckId=${deckId}` : '/api/cards')
   return handle<Card[]>(res)
 }
 
-export async function fetchDueCards(): Promise<Card[]> {
-  const res = await fetch('/api/cards/due')
+export async function fetchDueCards(deckId?: number): Promise<Card[]> {
+  const res = await fetch(deckId ? `/api/cards/due?deckId=${deckId}` : '/api/cards/due')
   return handle<Card[]>(res)
 }
 
-export async function createCard(front: string, back: string): Promise<Card> {
-  const res = await fetch('/api/cards', {
+export async function createCard(front: string, back: string, deckId?: number): Promise<Card> {
+  const res = await fetch(deckId ? `/api/cards?deckId=${deckId}` : '/api/cards', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ front, back }),
@@ -112,15 +124,50 @@ export async function fetchStats(): Promise<Stats> {
   return handle<Stats>(res)
 }
 
+/** deckName 留空进默认包；包不存在会按这个名字新建。 */
 export async function importCards(
   cards: { front: string; back: string }[],
+  deckName?: string,
 ): Promise<ImportResult> {
   const res = await fetch('/api/cards/import', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cards }),
+    body: JSON.stringify({ cards, deckName }),
   })
   return handle<ImportResult>(res)
+}
+
+// ---- 包 ------------------------------------------------------------------
+
+export async function fetchDecks(): Promise<Deck[]> {
+  const res = await fetch('/api/decks')
+  return handle<Deck[]>(res)
+}
+
+export async function createDeck(name: string): Promise<Deck> {
+  const res = await fetch('/api/decks', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  return handle<Deck>(res)
+}
+
+export async function renameDeck(id: number, name: string): Promise<Deck> {
+  const res = await fetch(`/api/decks/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  return handle<Deck>(res)
+}
+
+/** 删包会连里面的卡片一起删。 */
+export async function deleteDeck(id: number): Promise<void> {
+  const res = await fetch(`/api/decks/${id}`, { method: 'DELETE' })
+  if (!res.ok) {
+    throw await toError(res, `删除失败：${res.status}`)
+  }
 }
 
 // ---- 登录 ----------------------------------------------------------------

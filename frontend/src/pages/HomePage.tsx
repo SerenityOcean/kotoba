@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchStats } from '../api'
-import type { Stats } from '../api'
+import { fetchDecks, fetchStats } from '../api'
+import type { Deck, Stats } from '../api'
 
 export default function HomePage() {
   const [stats, setStats] = useState<Stats | null>(null)
+  const [decks, setDecks] = useState<Deck[]>([])
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
-    fetchStats()
-      .then(setStats)
+    Promise.all([fetchStats(), fetchDecks()])
+      .then(([nextStats, nextDecks]) => {
+        setStats(nextStats)
+        setDecks(nextDecks)
+      })
       .catch((e) => setError(e instanceof Error ? e.message : '加载失败'))
   }, [])
 
@@ -60,6 +64,35 @@ export default function HomePage() {
           </>
         )}
       </div>
+
+      {decks.length > 0 && stats.totalCards > 0 && (
+        <section className="border-t border-usu pt-6">
+          <h2 className="mb-3 text-xs tracking-wider text-hai">按包复习</h2>
+          <ul>
+            {decks.map((deck) => (
+              <li
+                key={deck.id}
+                className="flex items-baseline gap-3 border-b border-usu/60 py-2.5 last:border-0"
+              >
+                <span className="min-w-0 flex-1 truncate">{deck.name}</span>
+                <span className="text-xs tabular-nums text-hai">
+                  {deck.cardCount} 张
+                </span>
+                {deck.dueCount > 0 ? (
+                  <button
+                    onClick={() => navigate(`/review?deck=${deck.id}`)}
+                    className="text-sm text-ai transition hover:underline"
+                  >
+                    复习 {deck.dueCount}
+                  </button>
+                ) : (
+                  <span className="text-sm text-hai/60">已清空</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   )
 }

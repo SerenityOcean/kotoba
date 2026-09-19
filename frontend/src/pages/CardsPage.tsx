@@ -1,17 +1,23 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   createCard,
   deleteCard,
   fetchCards,
+  fetchDecks,
   importCards,
   parseImportText,
   updateCard,
 } from '../api'
-import type { Card, ImportResult } from '../api'
+import type { Card, Deck, ImportResult } from '../api'
 import AnkiImport from '../components/AnkiImport'
+import Furigana from '../components/Furigana'
+import DeckBar from '../components/DeckBar'
 
 export default function CardsPage() {
   const [cards, setCards] = useState<Card[]>([])
+  const [decks, setDecks] = useState<Deck[]>([])
+  // null = 看全部包
+  const [deckId, setDeckId] = useState<number | null>(null)
   const [front, setFront] = useState('')
   const [back, setBack] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -27,20 +33,28 @@ export default function CardsPage() {
   const [editFront, setEditFront] = useState('')
   const [editBack, setEditBack] = useState('')
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
-      setCards(await fetchCards())
+      const [nextDecks, nextCards] = await Promise.all([
+        fetchDecks(),
+        fetchCards(deckId ?? undefined),
+      ])
+      setDecks(nextDecks)
+      setCards(nextCards)
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : '加载失败')
     } finally {
       setLoading(false)
     }
-  }
+  }, [deckId])
 
   useEffect(() => {
     load()
-  }, [])
+  }, [load])
+
+  const selectedDeck = decks.find((d) => d.id === deckId) ?? null
+  const deckNames = new Map(decks.map((d) => [d.id, d.name]))
 
   async function handleCreate() {
     if (front.trim() === '') {
@@ -48,7 +62,7 @@ export default function CardsPage() {
       return
     }
     try {
-      await createCard(front, back)
+      await createCard(front, back, deckId ?? undefined)
       setFront('')
       setBack('')
       await load()
@@ -100,7 +114,7 @@ export default function CardsPage() {
     setImporting(true)
     setResult(null)
     try {
-      const r = await importCards(parsed)
+      const r = await importCards(parsed, selectedDeck?.name)
       setResult(r)
       setImportText('')
       await load()
@@ -113,6 +127,14 @@ export default function CardsPage() {
 
   return (
     <div>
+      <DeckBar
+        decks={decks}
+        deckId={deckId}
+        onSelect={setDeckId}
+        onChanged={load}
+        onError={setError}
+      />
+
       <section className="mb-8 border-b border-usu pb-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
           <label className="flex-1">
@@ -192,11 +214,19 @@ export default function CardsPage() {
           </div>
         )}
 
-        {showAnki && <AnkiImport onImported={load} />}
+        {showAnki && (
+          <AnkiImport
+            onImported={(result) => {
+              // 导完直接切到那个包，省得还要自己找
+              setDeckId(result.deckId)
+              load()
+            }}
+          />
+        )}
 
         {result && (
           <p className="mt-3 text-sm">
-            导入 <span className="text-ai">{result.imported}</span> 张
+            导入 <span className="text-ai">{result.imported}</span> 张到「{result.deckName}」
             {result.skipped > 0 && (
               <span className="text-hai">
                 ，跳过 {result.skipped} 张（已存在）：
@@ -214,7 +244,9 @@ export default function CardsPage() {
         <p className="text-sm text-hai">加载中…</p>
       ) : cards.length === 0 ? (
         <p className="py-10 text-center text-sm text-hai">
-          还没有卡片。在上面加一个你今天遇到的词。
+          {selectedDeck
+            ? `「${selectedDeck.name}」还是空的。`
+            : '还没有卡片。在上面加一个你今天遇到的词。'}
         </p>
       ) : (
         <ul>
@@ -262,10 +294,17 @@ export default function CardsPage() {
                 key={card.id}
                 className="group flex items-baseline gap-3 border-b border-usu py-4"
               >
-                <span className="font-mincho text-xl sm:text-2xl">{card.front}</span>
-                <span className="min-w-0 flex-1 truncate text-sm text-hai">
-                  {card.back}
+                <span className="font-mincho text-xl sm:text-2xl">
+                  <Furigana text={card.front} />
                 </span>
+                <span className="min-w-0 flex-1 truncate text-sm text-hai">
+                  {card.back && <Furigana text={card.back} />}
+                </span>
+                {deckId === null && (
+                  <span className="hidden shrink-0 text-xs text-hai/70 sm:inline">
+                    {deckNames.get(card.deckId)}
+                  </span>
+                )}
                 <span className="text-xs tabular-nums text-hai">
                   {card.repetitions} 次
                 </span>

@@ -2,10 +2,17 @@ import { useMemo, useState } from 'react'
 import { buildCards, guessMapping, parseApkg } from '../anki'
 import type { AnkiNoteType, FieldMapping } from '../anki'
 import { importCards } from '../api'
+import Furigana from './Furigana'
 import type { ImportResult } from '../api'
 
-export default function AnkiImport({ onImported }: { onImported: () => void }) {
+export default function AnkiImport({
+  onImported,
+}: {
+  onImported: (result: ImportResult) => void
+}) {
   const [fileName, setFileName] = useState<string | null>(null)
+  // 卡片导进哪个包：默认就叫这个 .apkg 的名字，可以改
+  const [deckName, setDeckName] = useState('')
   const [parsing, setParsing] = useState(false)
   const [noteTypes, setNoteTypes] = useState<AnkiNoteType[] | null>(null)
   const [typeIndex, setTypeIndex] = useState(0)
@@ -36,6 +43,7 @@ export default function AnkiImport({ onImported }: { onImported: () => void }) {
       setNoteTypes(types)
       setTypeIndex(0)
       setMapping(guessMapping(types[0]))
+      setDeckName(file.name.replace(/\.(apkg|colpkg)$/i, ''))
     } catch (e) {
       setError(e instanceof Error ? e.message : '解析失败')
       setFileName(null)
@@ -68,8 +76,9 @@ export default function AnkiImport({ onImported }: { onImported: () => void }) {
     setImporting(true)
     setError(null)
     try {
-      setResult(await importCards(cards))
-      onImported()
+      const imported = await importCards(cards, deckName.trim() || undefined)
+      setResult(imported)
+      onImported(imported)
     } catch (e) {
       setError(e instanceof Error ? e.message : '导入失败')
     } finally {
@@ -148,7 +157,7 @@ export default function AnkiImport({ onImported }: { onImported: () => void }) {
                 />
                 <span className="text-hai">保留注音</span>
                 <span className="font-mincho">
-                  {mapping.keepRuby ? '諦(あきら)める' : '諦める'}
+                  {mapping.keepRuby ? <Furigana text="諦[あきら]める" /> : '諦める'}
                 </span>
               </label>
 
@@ -170,6 +179,18 @@ export default function AnkiImport({ onImported }: { onImported: () => void }) {
             </div>
           </Row>
 
+          <Row label="导入到哪个包">
+            <input
+              value={deckName}
+              onChange={(e) => setDeckName(e.target.value)}
+              placeholder="包名"
+              className="w-full max-w-sm border-b border-usu bg-transparent pb-1 text-base focus:border-ai focus:outline-none"
+            />
+            <p className="mt-1 text-xs text-hai">
+              默认用文件名，之后在卡片页还能改
+            </p>
+          </Row>
+
           <Row label="预览">
             {cards.length === 0 ? (
               <p className="text-sm text-hai">按当前映射没有可导入的卡片</p>
@@ -177,9 +198,11 @@ export default function AnkiImport({ onImported }: { onImported: () => void }) {
               <ul className="space-y-2">
                 {cards.slice(0, 3).map((card, i) => (
                   <li key={i} className="border-l-2 border-usu pl-3">
-                    <div className="font-mincho text-lg">{card.front}</div>
-                    <div className="whitespace-pre-line text-sm text-hai">
-                      {card.back || '（背面为空）'}
+                    <div className="font-mincho text-lg">
+                      <Furigana text={card.front} />
+                    </div>
+                    <div className="ruby-block whitespace-pre-line text-sm text-hai">
+                      {card.back ? <Furigana text={card.back} /> : '（背面为空）'}
                     </div>
                   </li>
                 ))}
@@ -190,7 +213,7 @@ export default function AnkiImport({ onImported }: { onImported: () => void }) {
           <div className="flex flex-wrap items-center gap-4">
             <button
               onClick={handleImport}
-              disabled={cards.length === 0 || importing}
+              disabled={cards.length === 0 || importing || deckName.trim() === ''}
               className="rounded-sm bg-ai px-5 py-2.5 text-sm text-washi transition hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-30"
             >
               {importing ? '导入中…' : `导入 ${cards.length} 张`}
@@ -204,7 +227,7 @@ export default function AnkiImport({ onImported }: { onImported: () => void }) {
 
       {result && (
         <p className="mt-4 text-sm">
-          导入 <span className="text-ai">{result.imported}</span> 张
+          导入 <span className="text-ai">{result.imported}</span> 张到「{result.deckName}」
           {result.skipped > 0 && (
             <span className="text-hai">
               ，跳过 {result.skipped} 张（已存在）：

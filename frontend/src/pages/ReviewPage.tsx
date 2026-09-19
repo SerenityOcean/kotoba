@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { fetchDueCards, reviewCard } from '../api'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { fetchDecks, fetchDueCards, reviewCard } from '../api'
+import Furigana from '../components/Furigana'
 import type { Card, Rating } from '../api'
 
 export default function ReviewPage() {
@@ -9,14 +10,27 @@ export default function ReviewPage() {
   const [revealed, setRevealed] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [deckName, setDeckName] = useState<string | null>(null)
   const navigate = useNavigate()
 
+  // ?deck=3 表示只复习这个包，不带就是全部
+  const [searchParams] = useSearchParams()
+  const deckParam = searchParams.get('deck')
+  const deckId = deckParam ? Number(deckParam) : undefined
+
   useEffect(() => {
-    fetchDueCards()
+    fetchDueCards(deckId)
       .then(setQueue)
       .catch((e) => setError(e instanceof Error ? e.message : '加载失败'))
       .finally(() => setLoading(false))
-  }, [])
+
+    if (deckId) {
+      // 只为了在顶上显示包名，失败就不显示，不影响复习
+      fetchDecks()
+        .then((decks) => setDeckName(decks.find((d) => d.id === deckId)?.name ?? null))
+        .catch(() => setDeckName(null))
+    }
+  }, [deckId])
 
   const current = queue[index]
 
@@ -80,6 +94,9 @@ export default function ReviewPage() {
   return (
     <div>
       <div className="mb-8 flex items-center gap-3">
+        {deckName && (
+          <span className="max-w-[40%] truncate text-xs text-hai">{deckName}</span>
+        )}
         <span className="text-xs tabular-nums text-hai">
           {index + 1} / {queue.length}
         </span>
@@ -99,14 +116,14 @@ export default function ReviewPage() {
 
       <div className="py-12 text-center sm:py-16">
         <div className="font-mincho text-5xl leading-tight sm:text-6xl">
-          {current.front}
+          <Furigana text={current.front} />
         </div>
 
         {revealed && (
           <>
             <div className="mx-auto my-8 h-px w-16 bg-usu" />
-            <div className="text-xl text-hai sm:text-2xl">
-              {current.back || '（无背面）'}
+            <div className="ruby-block whitespace-pre-line text-xl text-hai sm:text-2xl">
+              {current.back ? <Furigana text={current.back} /> : '（无背面）'}
             </div>
           </>
         )}

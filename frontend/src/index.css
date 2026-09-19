@@ -11,3 +11,14 @@
   --font-mincho: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", "Songti SC", serif;
   --font-ui: ui-sans-serif, system-ui, "Hiragino Sans", "PingFang SC", sans-serif;
 }
+
+/* 振り仮名：假名比正文小一半，带注音的行需要更宽的行距才不会挤到上一行 */
+ruby > rt {
+  font-size: 0.5em;
+  font-weight: inherit;
+  line-height: 1.2;
+}
+
+.ruby-block {
+  line-height: 2.1;
+}
