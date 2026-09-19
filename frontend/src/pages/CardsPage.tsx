@@ -8,6 +8,7 @@ import {
   updateCard,
 } from '../api'
 import type { Card, ImportResult } from '../api'
+import AnkiImport from '../components/AnkiImport'
 
 export default function CardsPage() {
   const [cards, setCards] = useState<Card[]>([])
@@ -17,6 +18,7 @@ export default function CardsPage() {
   const [loading, setLoading] = useState(true)
 
   const [showImport, setShowImport] = useState(false)
+  const [showAnki, setShowAnki] = useState(false)
   const [importText, setImportText] = useState('')
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
@@ -143,15 +145,28 @@ export default function CardsPage() {
           </button>
         </div>
 
-        <button
-          onClick={() => {
-            setShowImport(!showImport)
-            setResult(null)
-          }}
-          className="mt-4 text-xs text-hai transition hover:text-sumi"
-        >
-          {showImport ? '收起批量导入' : '批量导入…'}
-        </button>
+        <div className="mt-4 flex gap-4">
+          <button
+            onClick={() => {
+              setShowImport(!showImport)
+              setShowAnki(false)
+              setResult(null)
+            }}
+            className="text-xs text-hai transition hover:text-sumi"
+          >
+            {showImport ? '收起批量导入' : '批量导入…'}
+          </button>
+          <button
+            onClick={() => {
+              setShowAnki(!showAnki)
+              setShowImport(false)
+              setResult(null)
+            }}
+            className="text-xs text-hai transition hover:text-sumi"
+          >
+            {showAnki ? '收起 Anki 导入' : '从 Anki 导入…'}
+          </button>
+        </div>
 
         {showImport && (
           <div className="mt-4">
@@ -176,6 +191,8 @@ export default function CardsPage() {
             </div>
           </div>
         )}
+
+        {showAnki && <AnkiImport onImported={load} />}
 
         {result && (
           <p className="mt-3 text-sm">
