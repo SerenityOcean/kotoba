@@ -24,6 +24,9 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
 
     private static final String TOOL_NAME = "submit_analysis";
 
+    /** 输出上限。拆解一句话的 JSON 加上思考过程，几千 token 是常态。 */
+    private static final long MAX_TOKENS = 8192;
+
     /**
      * 思考模式下不让强制 tool_choice（qwen3 会直接回 400），所以只能用 auto
      * 再在提示词里点名。思考对语法分析是有用的，不值得为了强制调用关掉它。
@@ -45,6 +48,9 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
     public Analysis analyze(String systemPrompt, String text) {
         Map<String, Object> body = Map.of(
                 "model", model,
+                // 不给的话用服务端默认值，而思考模式的 token 也算在里面 ——
+                // 拆解的 JSON 本来就长，很容易被截断成半句
+                "max_tokens", MAX_TOKENS,
                 "messages", List.of(
                         Map.of("role", "system", "content", systemPrompt + TOOL_INSTRUCTION),
                         Map.of("role", "user", "content", text)),
@@ -65,6 +71,7 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
     public String annotate(String systemPrompt, String text) {
         Map<String, Object> body = Map.of(
                 "model", model,
+                "max_tokens", MAX_TOKENS,
                 "messages", List.of(
                         Map.of("role", "system", "content", systemPrompt),
                         Map.of("role", "user", "content", text)));
@@ -143,7 +150,10 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
         try {
             return json.readValue(arguments, Analysis.class);
         } catch (JacksonException e) {
-            throw new AnalysisFailedException("模型返回的结果看不懂，可能被截断了", e);
+            // 带上原因和长度：截断和格式不对是两回事，光说「看不懂」没法排查
+            throw new AnalysisFailedException(
+                    "模型返回的结果解析不了（" + arguments.length() + " 字符）："
+                            + e.getOriginalMessage(), e);
         }
     }
 

@@ -7,6 +7,23 @@ import Furigana from '../components/Furigana'
 import AnalysisResults, { SaveBar } from '../components/AnalysisResults'
 
 /**
+ * 取当前选区的纯文本。
+ *
+ * 不能直接用 selection.toString()：振假名是 <ruby><rt>，浏览器会把读音
+ * 一起拼进字符串 ——「違って」变成「違ちがって」，送给模型就是一句
+ * 根本不存在的日语。所以克隆选区、摘掉 <rt> 再取文本。
+ */
+function readSelection(): string {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0 || selection.isCollapsed) {
+    return ''
+  }
+  const fragment = selection.getRangeAt(0).cloneContents()
+  fragment.querySelectorAll('rt, rp').forEach((node) => node.remove())
+  return (fragment.textContent ?? '').trim()
+}
+
+/**
  * 读文章。选中看不懂的一段就地拆解，勾一勾建成卡片 ——
  * 读、查、记在同一个页面里闭环。
  *
@@ -33,7 +50,7 @@ export default function ArticlePage() {
    */
   useEffect(() => {
     function onSelectionChange() {
-      setSelection(window.getSelection()?.toString().trim() ?? '')
+      setSelection(readSelection())
     }
     document.addEventListener('selectionchange', onSelectionChange)
     return () => document.removeEventListener('selectionchange', onSelectionChange)
