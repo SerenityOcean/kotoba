@@ -14,13 +14,19 @@ export default function App() {
 
   // 读文章时给宽屏留出第二栏放拆解面板；其余页面维持易读的窄栏宽度
   const wide = /^\/reading\/[^/]+$/.test(location.pathname)
+  // 登录页只有一块内容，没有导航在右边配重，靠左排会明显偏心 —— 单独收窄居中
+  const centered = location.pathname === '/login'
+
+  const width = centered ? 'max-w-sm' : wide ? 'max-w-6xl' : 'max-w-3xl'
 
   return (
     <div className="min-h-screen bg-washi font-ui text-sumi">
-      <div
-        className={`mx-auto px-4 py-10 sm:px-8 sm:py-16 ${wide ? 'max-w-6xl' : 'max-w-3xl'}`}
-      >
-        <header className="mb-12 flex flex-wrap items-end justify-between gap-x-8 gap-y-5 sm:mb-16">
+      <div className={`mx-auto px-4 py-10 sm:px-8 sm:py-16 ${width}`}>
+        <header
+          className={`mb-12 flex flex-wrap items-end gap-x-8 gap-y-5 sm:mb-16 ${
+            centered ? 'justify-center text-center' : 'justify-between'
+          }`}
+        >
           <div>
             <h1 className="font-mincho text-4xl leading-none tracking-[0.35em] sm:text-5xl">
               言葉
