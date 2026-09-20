@@ -35,10 +35,14 @@ public class AnalyzeConfig {
     AnalysisEngine openAiCompatibleEngine(@Value("${analyze.openai.base-url}") String baseUrl,
                                           @Value("${analyze.openai.api-key}") String apiKey,
                                           @Value("${analyze.openai.model}") String model,
+                                          @Value("${analyze.openai.timeout-seconds}") long timeoutSeconds,
+                                          @Value("${analyze.openai.thinking}") String thinking,
                                           ObjectMapper json) {
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory();
-        // 拆解一段话要想几十秒，默认超时不够用
-        factory.setReadTimeout(Duration.ofMinutes(3));
+        // 拆解一段话要想几十秒，默认超时不够用。
+        // 但也不能太长：必须小于 nginx 的 proxy_read_timeout，
+        // 否则用户看到的是 nginx 的裸 504，而不是这边给出的中文错误。
+        factory.setReadTimeout(Duration.ofSeconds(timeoutSeconds));
 
         RestClient http = RestClient.builder()
                 .requestFactory(factory)
@@ -46,6 +50,6 @@ public class AnalyzeConfig {
                 .defaultHeader("Authorization", "Bearer " + apiKey)
                 .build();
 
-        return new OpenAiCompatibleEngine(http, json, model);
+        return new OpenAiCompatibleEngine(http, json, model, thinking);
     }
 }
