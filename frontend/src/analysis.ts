@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { analyzeText, fetchDecks, importCards, splitSentences } from './api'
 import type { AnalyzedSentence, Deck, ImportResult } from './api'
 
@@ -28,6 +28,12 @@ export function useAnalysis() {
   const [decks, setDecks] = useState<Deck[]>([])
   // 空串 = 交给后端塞进默认包
   const [deckName, setDeckName] = useState('')
+
+  /**
+   * 第几轮拆解。上一轮还没跑完就开始新的一轮时，旧请求的响应会按下标
+   * 写进新一批槽位里、把内容串台 —— 所以迟到的响应要按轮次丢掉。
+   */
+  const runId = useRef(0)
 
   // 包列表只是给下拉框用的，拿不到就算了 —— 不配包也能建卡
   useEffect(() => {
@@ -72,6 +78,7 @@ export function useAnalysis() {
   }, [])
 
   const reset = useCallback(() => {
+    runId.current += 1
     setSlots([])
     setSelected(new Set())
     setResult(null)
@@ -79,6 +86,7 @@ export function useAnalysis() {
   }, [])
 
   const run = useCallback(async (text: string) => {
+    const id = ++runId.current
     const parts = splitSentences(text)
     if (parts.length === 0) return
     if (parts.length > MAX_SENTENCES) {
@@ -92,6 +100,7 @@ export function useAnalysis() {
     setSlots(parts.map((source) => ({ status: 'pending', source })))
 
     function settle(index: number, slot: Slot) {
+      if (runId.current !== id) return
       setSlots((prev) => prev.map((s, i) => (i === index ? slot : s)))
     }
 
@@ -105,6 +114,7 @@ export function useAnalysis() {
           try {
             const analysis = await analyzeText(source)
             settle(index, { status: 'done', source, sentences: analysis.sentences })
+            if (runId.current !== id) return
             // 词和语法点默认勾上；整句留给用户自己点 —— 大部分句子不值得单独背
             setSelected((prev) => {
               const nextSelected = new Set(prev)

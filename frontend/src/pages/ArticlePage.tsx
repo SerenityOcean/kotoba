@@ -35,7 +35,14 @@ export default function ArticlePage() {
   const [article, setArticle] = useState<Article | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selection, setSelection] = useState('')
+  // 已经拆过的那段。选中它时不用再弹按钮 —— 没有新东西可拆
+  const [analyzed, setAnalyzed] = useState('')
   const analysis = useAnalysis()
+
+  function analyze(text: string) {
+    setAnalyzed(text)
+    analysis.run(text)
+  }
 
   useEffect(() => {
     if (!id) return
@@ -60,6 +67,8 @@ export default function ArticlePage() {
   if (!article) return <p className="text-sm text-hai">加载中…</p>
 
   const showPanel = analysis.slots.length > 0
+  // 选中了新的一段（不是刚拆过那段）才值得提示
+  const pending = selection !== '' && selection !== analyzed ? selection : ''
 
   return (
     <div
@@ -100,14 +109,14 @@ export default function ArticlePage() {
           </div>
         </article>
 
-        {/* 选中了但还没拆：浮一条出来，点了才花钱 */}
-        {selection !== '' && !showPanel && (
+        {/* 选中了但还没拆：浮一条出来，点了才花钱。面板开着时按钮挪到面板顶部 */}
+        {pending !== '' && !showPanel && (
           <div className="sticky bottom-0 -mx-4 mt-10 border-t border-usu bg-washi px-4 py-4 sm:-mx-8 sm:px-8">
             <button
-              onClick={() => analysis.run(selection)}
+              onClick={() => analyze(pending)}
               className="rounded-sm bg-ai px-5 py-2.5 text-sm text-washi transition hover:opacity-85"
             >
-              拆解选中的 {selection.length} 字
+              拆解选中的 {pending.length} 字
             </button>
           </div>
         )}
@@ -117,14 +126,25 @@ export default function ArticlePage() {
         <aside
           className="fixed inset-x-0 bottom-0 z-10 max-h-[72vh] overflow-y-auto border-t border-usu bg-washi px-4 pb-4 shadow-[0_-4px_24px_rgba(0,0,0,0.06)] sm:px-8 xl:sticky xl:inset-auto xl:top-8 xl:max-h-[calc(100vh-4rem)] xl:border-t-0 xl:border-l xl:px-6 xl:pt-1 xl:shadow-none"
         >
-          <div className="sticky top-0 z-10 mb-3 flex items-baseline justify-between bg-washi pt-4 pb-2 xl:pt-3">
-            <span className="text-xs tracking-widest text-hai">拆解</span>
+          <div className="sticky top-0 z-10 mb-3 flex items-baseline justify-between gap-3 bg-washi pt-4 pb-2 xl:pt-3">
+            {/* 面板开着时又选了新的一段 —— 按钮放这儿，不用先收起再选 */}
+            {pending !== '' ? (
+              <button
+                onClick={() => analyze(pending)}
+                className="rounded-sm bg-ai px-3 py-1.5 text-xs text-washi transition hover:opacity-85"
+              >
+                拆解新选中的 {pending.length} 字
+              </button>
+            ) : (
+              <span className="text-xs tracking-widest text-hai">拆解</span>
+            )}
             <button
               onClick={() => {
                 analysis.reset()
                 setSelection('')
+                setAnalyzed('')
               }}
-              className="text-xs text-hai transition hover:text-sumi"
+              className="shrink-0 text-xs text-hai transition hover:text-sumi"
             >
               收起
             </button>
