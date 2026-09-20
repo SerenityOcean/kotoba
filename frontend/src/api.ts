@@ -198,6 +198,21 @@ export async function deleteDeck(id: number): Promise<void> {
 }
 
 /**
+ * 把粘进来的文本切成句子。逐句并行拆解，哪句先回来先显示 ——
+ * 等待时间就从「所有句子之和」变成「最慢的那一句」。
+ *
+ * 切法：句号/问号/叹号断句，右引号和右括号跟着前一句走；剩下没有标点
+ * 收尾的那一段也算一句（很多复制来的文本最后一句是秃的）。
+ */
+export function splitSentences(text: string): string[] {
+  return text
+    .split(/\n+/)
+    .flatMap((line) => line.match(/[^。！？!?]*[。！？!?]+[」』）)]*|[^。！？!?]+$/g) ?? [])
+    .map((s) => s.trim())
+    .filter((s) => s !== '')
+}
+
+/**
  * 把一段日语交给后端拆解。模型要想一会儿，前端这边等着就行 ——
  * 没配 key 的服务端会回 503，文案由后端给。
  */

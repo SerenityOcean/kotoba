@@ -6,7 +6,7 @@ import java.util.List;
 
 public record AnalyzedSentence(
 
-        @JsonPropertyDescription("这一句的日语原文，原样照抄，不要改写")
+        @JsonPropertyDescription("这一句的日语原文，照抄不要改写，但汉字要按方括号记法注音，例如「東日本[ひがしにほん]の太平洋[たいへいよう]側[がわ]」")
         String original,
 
         @JsonPropertyDescription("整句的中文翻译，要自然通顺，不要逐字直译")

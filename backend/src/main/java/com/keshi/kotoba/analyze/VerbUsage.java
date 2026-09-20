@@ -4,7 +4,7 @@ import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 
 public record VerbUsage(
 
-        @JsonPropertyDescription("动词在句中出现的原样形式，例如「食べさせられた」")
+        @JsonPropertyDescription("动词在句中出现的原样形式，汉字注音，例如「食[た]べさせられた」")
         String surface,
 
         @JsonPropertyDescription("辞书形（原形），例如「食べる」")

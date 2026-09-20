@@ -13,7 +13,7 @@ public record GrammarPoint(
         @JsonPropertyDescription("接续规则和用法说明：接在什么形式后面、什么场合用、和近义句型的区别")
         String explanation,
 
-        @JsonPropertyDescription("一个额外的例句（日语原文 + 中文翻译），不要用原文里那句")
+        @JsonPropertyDescription("一个额外的例句（日语原文 + 中文翻译），日语部分的汉字要注音，不要用原文里那句")
         String example
 ) {
 }

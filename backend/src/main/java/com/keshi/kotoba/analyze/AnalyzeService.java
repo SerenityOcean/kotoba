@@ -28,6 +28,12 @@ public class AnalyzeService {
                入门就会的基本用法不用列，列了反而吵。
             6. 所有讲解用中文写，日语词句保持日语原样。
             7. 吃不准的地方宁可少写一条，不要编。
+            8. 日语原文里的汉字一律注音，用方括号写在汉字后面，例如
+               「東日本[ひがしにほん]」「来[き]そう」。
+               注意只把汉字本身放进方括号前面，送り仮名留在外面 ——
+               写「食[た]べる」，不要写「食べ[たべ]る」，后者显示不出来。
+               需要注音的是 original、surface、example 三个字段；
+               pattern 和各种中文讲解里不用。
             """;
 
     private final ObjectProvider<AnalysisEngine> engines;
