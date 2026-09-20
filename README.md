@@ -48,6 +48,19 @@
 
 Anki 2.1.50 之后导出的包用 zstd 压缩（`collection.anki21b`），浏览器里解不了 ——
 导出时勾选「支持旧版 Anki」即可。
+## AI 拆解
+
+「拆解」页：粘一段日语进去，模型逐句给出中文翻译、动词活用讲解和语法点，
+每条都能勾选，一键变成卡片（走的是批量导入那条路，重复的会自动跳过）。
+
+要用这个功能得给后端配 Anthropic 的 API key，key 只从环境变量读：
+
+    export ANTHROPIC_API_KEY=sk-ant-...
+    cd backend && ./mvnw spring-boot:run
+
+没配也不影响别的：应用照常启动，只有 `/api/analyze` 回 503。
+换模型改 `application.properties` 里的 `anthropic.model` 一行就行
+（默认 `claude-sonnet-5`，想要更强的推理换 `claude-opus-5`）。
 
 ## 登录
 

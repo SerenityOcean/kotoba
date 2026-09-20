@@ -2,6 +2,7 @@ import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import HomePage from './pages/HomePage'
 import ReviewPage from './pages/ReviewPage'
 import CardsPage from './pages/CardsPage'
+import AnalyzePage from './pages/AnalyzePage'
 import LoginPage from './pages/LoginPage'
 import { useAuth } from './auth-context'
 
@@ -22,6 +23,7 @@ export default function App() {
               <NavItem to="/" end>
                 首页
               </NavItem>
+              <NavItem to="/analyze">拆解</NavItem>
               <NavItem to="/cards">卡片</NavItem>
               <UserMenu />
             </nav>
@@ -47,6 +49,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <ReviewPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/analyze"
+              element={
+                <RequireAuth>
+                  <AnalyzePage />
                 </RequireAuth>
               }
             />

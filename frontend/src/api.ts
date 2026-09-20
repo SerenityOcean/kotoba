@@ -35,6 +35,33 @@ export interface Deck {
   createdAt: string
 }
 
+export interface VerbUsage {
+  surface: string
+  dictionaryForm: string
+  reading: string
+  form: string
+  explanation: string
+  meaning: string
+}
+
+export interface GrammarPoint {
+  pattern: string
+  meaning: string
+  explanation: string
+  example: string
+}
+
+export interface AnalyzedSentence {
+  original: string
+  translation: string
+  verbs: VerbUsage[]
+  grammarPoints: GrammarPoint[]
+}
+
+export interface Analysis {
+  sentences: AnalyzedSentence[]
+}
+
 /** 会话过期时所有请求都会撞 401，AuthProvider 听这个事件把登录态清掉。 */
 export const UNAUTHORIZED_EVENT = 'kotoba:unauthorized'
 
@@ -168,6 +195,19 @@ export async function deleteDeck(id: number): Promise<void> {
   if (!res.ok) {
     throw await toError(res, `删除失败：${res.status}`)
   }
+}
+
+/**
+ * 把一段日语交给后端拆解。模型要想一会儿，前端这边等着就行 ——
+ * 没配 key 的服务端会回 503，文案由后端给。
+ */
+export async function analyzeText(text: string): Promise<Analysis> {
+  const res = await fetch('/api/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+  return handle<Analysis>(res)
 }
 
 // ---- 登录 ----------------------------------------------------------------
