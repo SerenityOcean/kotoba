@@ -10,6 +10,9 @@ public interface AnalysisEngine {
 
     Analysis analyze(String systemPrompt, String text);
 
+    /** 纯文本进、纯文本出，不走结构化输出 —— 给全文注音用的。 */
+    String annotate(String systemPrompt, String text);
+
     /** 出错文案里用得上，让用户知道是哪家在报错。 */
     String describe();
 }

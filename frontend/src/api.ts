@@ -225,6 +225,115 @@ export async function analyzeText(text: string): Promise<Analysis> {
   return handle<Analysis>(res)
 }
 
+// ---- 阅读 ----------------------------------------------------------------
+
+export interface ArticleSummary {
+  id: number
+  title: string
+  excerpt: string
+  length: number
+  sourceUrl: string | null
+  createdAt: string
+}
+
+export interface Article {
+  id: number
+  title: string
+  body: string
+  sourceUrl: string | null
+  createdAt: string
+}
+
+export interface FuriganaResult {
+  text: string
+  /** false = 模型把正文改了，后端退回了原文。这段是没注音的。 */
+  annotated: boolean
+}
+
+export async function fetchArticles(): Promise<ArticleSummary[]> {
+  const res = await fetch('/api/articles')
+  return handle<ArticleSummary[]>(res)
+}
+
+export async function fetchArticle(id: number): Promise<Article> {
+  const res = await fetch(`/api/articles/${id}`)
+  return handle<Article>(res)
+}
+
+export async function createArticle(
+  title: string,
+  body: string,
+  sourceUrl?: string,
+): Promise<Article> {
+  const res = await fetch('/api/articles', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, body, sourceUrl }),
+  })
+  return handle<Article>(res)
+}
+
+export async function deleteArticle(id: number): Promise<void> {
+  const res = await fetch(`/api/articles/${id}`, { method: 'DELETE' })
+  if (!res.ok) {
+    throw await toError(res, `删除失败：${res.status}`)
+  }
+}
+
+/** 给一段日语加注音。后端会校验模型没改正文，改了就退回原文。 */
+export async function annotateFurigana(text: string): Promise<FuriganaResult> {
+  const res = await fetch('/api/furigana', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+  return handle<FuriganaResult>(res)
+}
+
+/** 注音时的一小块：annotate=false 的原样穿过去（空行、换行符）。 */
+export interface Piece {
+  text: string
+  annotate: boolean
+}
+
+/**
+ * 把正文切成送去注音的块，并且保住原来的行结构 —— 换行和空行都作为
+ * 不注音的块留在原位，拼回来时一个字符都不差。
+ *
+ * 块切小一点有三个好处：后端一次只收 2000 字、并行起来更快、某一块
+ * 失败时重来的代价也小。
+ */
+export function splitForFurigana(text: string, maxLength = 800): Piece[] {
+  const pieces: Piece[] = []
+  const lines = text.split('\n')
+
+  lines.forEach((line, index) => {
+    if (index > 0) pieces.push({ text: '\n', annotate: false })
+
+    if (line.trim() === '') {
+      pieces.push({ text: line, annotate: false })
+      return
+    }
+    if (line.length <= maxLength) {
+      pieces.push({ text: line, annotate: true })
+      return
+    }
+
+    // 超长的一行按句子攒，攒到接近上限就断一块
+    let current = ''
+    for (const sentence of splitSentences(line)) {
+      if (current !== '' && current.length + sentence.length > maxLength) {
+        pieces.push({ text: current, annotate: true })
+        current = ''
+      }
+      current += sentence
+    }
+    if (current !== '') pieces.push({ text: current, annotate: true })
+  })
+
+  return pieces
+}
+
 // ---- 登录 ----------------------------------------------------------------
 
 export interface User {

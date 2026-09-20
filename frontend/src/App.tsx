@@ -3,6 +3,8 @@ import HomePage from './pages/HomePage'
 import ReviewPage from './pages/ReviewPage'
 import CardsPage from './pages/CardsPage'
 import AnalyzePage from './pages/AnalyzePage'
+import ArticlesPage from './pages/ArticlesPage'
+import ArticlePage from './pages/ArticlePage'
 import LoginPage from './pages/LoginPage'
 import { useAuth } from './auth-context'
 
@@ -23,6 +25,7 @@ export default function App() {
               <NavItem to="/" end>
                 首页
               </NavItem>
+              <NavItem to="/reading">阅读</NavItem>
               <NavItem to="/analyze">拆解</NavItem>
               <NavItem to="/cards">卡片</NavItem>
               <UserMenu />
@@ -49,6 +52,22 @@ export default function App() {
               element={
                 <RequireAuth>
                   <ReviewPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/reading"
+              element={
+                <RequireAuth>
+                  <ArticlesPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/reading/:id"
+              element={
+                <RequireAuth>
+                  <ArticlePage />
                 </RequireAuth>
               }
             />
