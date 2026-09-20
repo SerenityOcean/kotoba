@@ -10,18 +10,26 @@ import { useAuth } from './auth-context'
 
 export default function App() {
   const { user, ready } = useAuth()
+  const location = useLocation()
+
+  // 读文章时给宽屏留出第二栏放拆解面板；其余页面维持易读的窄栏宽度
+  const wide = /^\/reading\/[^/]+$/.test(location.pathname)
 
   return (
     <div className="min-h-screen bg-washi font-ui text-sumi">
-      <div className="mx-auto max-w-xl px-4 py-10 sm:px-6 sm:py-20">
-        <header className="mb-8 flex items-baseline justify-between sm:mb-10">
+      <div
+        className={`mx-auto px-4 py-10 sm:px-8 sm:py-16 ${wide ? 'max-w-6xl' : 'max-w-3xl'}`}
+      >
+        <header className="mb-12 flex flex-wrap items-end justify-between gap-x-8 gap-y-5 sm:mb-16">
           <div>
-            <h1 className="font-mincho text-2xl tracking-[0.3em] sm:text-3xl">言葉</h1>
-            <p className="mt-1 text-xs tracking-widest text-hai">KOTOBA</p>
+            <h1 className="font-mincho text-4xl leading-none tracking-[0.35em] sm:text-5xl">
+              言葉
+            </h1>
+            <p className="mt-3 text-[0.65rem] tracking-[0.55em] text-hai">KOTOBA</p>
           </div>
 
           {user && (
-            <nav className="flex items-baseline gap-5 text-sm">
+            <nav className="flex items-baseline gap-6 text-sm">
               <NavItem to="/" end>
                 首页
               </NavItem>
