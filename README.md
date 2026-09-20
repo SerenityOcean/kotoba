@@ -51,16 +51,38 @@ Anki 2.1.50 之后导出的包用 zstd 压缩（`collection.anki21b`），浏览
 ## AI 拆解
 
 「拆解」页：粘一段日语进去，模型逐句给出中文翻译、动词活用讲解和语法点，
-每条都能勾选，一键变成卡片（走的是批量导入那条路，重复的会自动跳过）。
+每条都能勾选，一键变成卡片（走的是批量导入那条路，重复的会自动跳过），
+可以选存进哪个包。
 
-要用这个功能得给后端配 Anthropic 的 API key，key 只从环境变量读：
+要用这个功能得配一个模型服务。支持两种，都只从环境变量读 key：
 
-    export ANTHROPIC_API_KEY=sk-ant-...
+### OpenAI 兼容接口（默认）
+
+百炼（通义）、DeepSeek、智谱都是这一套，区别只在 base-url 和 model。
+以百炼为例：
+
+    export ANALYZE_BASE_URL=https://你的WorkspaceId.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+    export ANALYZE_API_KEY=sk-...
+    export ANALYZE_MODEL=qwen3.7-plus
     cd backend && ./mvnw spring-boot:run
 
-没配也不影响别的：应用照常启动，只有 `/api/analyze` 回 503。
-换模型改 `application.properties` 里的 `anthropic.model` 一行就行
-（默认 `claude-sonnet-5`，想要更强的推理换 `claude-opus-5`）。
+base-url 填到 `/v1` 为止，不要带 `/chat/completions`。百炼的地址带工作空间 id，
+在控制台创建 key 的页面能看到；key 和地址是绑定区域的，别混用。
+
+### Anthropic
+
+    export ANALYZE_PROVIDER=anthropic
+    export ANTHROPIC_API_KEY=sk-ant-...
+
+注意 Anthropic 的 API 额度和 Claude.ai 的订阅是两套账，要在 Console 的
+Plans & Billing 里单独充值。
+
+### 说明
+
+没配 key 也不影响别的：应用照常启动，只有 `/api/analyze` 回 503。
+
+两条路共用同一份 JSON schema，从 `Analysis` 那几个 record 推出来
+（`AnalysisSchema`）—— 改拆解的输出格式只要改 record，两边自动跟上。
 
 ## 登录
 
