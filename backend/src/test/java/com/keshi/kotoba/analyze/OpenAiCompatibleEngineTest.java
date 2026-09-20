@@ -18,7 +18,7 @@ class OpenAiCompatibleEngineTest {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private static JsonNode unwrap(String raw) {
-        return new OpenAiCompatibleEngine(null, JSON, "test")
+        return new OpenAiCompatibleEngine(null, JSON, "test", "false")
                 .unwrapDoubleEncoded(JSON.readTree(raw));
     }
 

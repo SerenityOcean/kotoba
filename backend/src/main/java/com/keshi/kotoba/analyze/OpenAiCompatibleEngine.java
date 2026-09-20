@@ -10,6 +10,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -38,44 +39,60 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
     private final RestClient http;
     private final ObjectMapper json;
     private final String model;
+    /** "true"/"false" 显式开关思考模式，空串表示这个字段不发（非 qwen 的服务可能不认）。 */
+    private final String thinking;
 
-    OpenAiCompatibleEngine(RestClient http, ObjectMapper json, String model) {
+    OpenAiCompatibleEngine(RestClient http, ObjectMapper json, String model, String thinking) {
         this.http = http;
         this.json = json;
         this.model = model;
+        this.thinking = thinking;
+    }
+
+    /** 思考关掉时才能强制指定函数 —— 开着的话 qwen 会直接回 400。 */
+    private boolean thinkingOff() {
+        return "false".equals(thinking);
+    }
+
+    private Map<String, Object> baseBody() {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", model);
+        // 不给的话用服务端默认值，而思考模式的 token 也算在里面 ——
+        // 拆解的 JSON 本来就长，很容易被截断成半句
+        body.put("max_tokens", MAX_TOKENS);
+        if (!thinking.isBlank()) {
+            body.put("enable_thinking", Boolean.parseBoolean(thinking));
+        }
+        return body;
     }
 
     @Override
     public Analysis analyze(String systemPrompt, String text) {
-        Map<String, Object> body = Map.of(
-                "model", model,
-                // 不给的话用服务端默认值，而思考模式的 token 也算在里面 ——
-                // 拆解的 JSON 本来就长，很容易被截断成半句
-                "max_tokens", MAX_TOKENS,
-                "messages", List.of(
-                        Map.of("role", "system", "content", systemPrompt + TOOL_INSTRUCTION),
-                        Map.of("role", "user", "content", text)),
-                "tools", List.of(Map.of(
-                        "type", "function",
-                        "function", Map.of(
-                                "name", TOOL_NAME,
-                                "description", "提交这段日语的拆解结果",
-                                "parameters", schemaNode()))),
-                // 只能是 auto：思考模式下传对象或 "required" 会被拒。
-                // 真没调函数的话，下面 extractArguments 还会从正文里捞一次
-                "tool_choice", "auto");
+        Map<String, Object> body = baseBody();
+        body.put("messages", List.of(
+                Map.of("role", "system", "content", systemPrompt + TOOL_INSTRUCTION),
+                Map.of("role", "user", "content", text)));
+        body.put("tools", List.of(Map.of(
+                "type", "function",
+                "function", Map.of(
+                        "name", TOOL_NAME,
+                        "description", "提交这段日语的拆解结果",
+                        "parameters", schemaNode()))));
+        // 思考关掉了就强制走这个函数，结构最稳；开着只能用 auto，
+        // 靠提示词点名 + 从正文里捞 JSON 兜底
+        body.put("tool_choice", thinkingOff()
+                ? Map.of("type", "function", "function", Map.of("name", TOOL_NAME))
+                : "auto");
 
         return parse(extractArguments(post(body)));
     }
 
     @Override
     public String annotate(String systemPrompt, String text) {
-        Map<String, Object> body = Map.of(
-                "model", model,
-                "max_tokens", MAX_TOKENS,
-                "messages", List.of(
-                        Map.of("role", "system", "content", systemPrompt),
-                        Map.of("role", "user", "content", text)));
+        Map<String, Object> body = baseBody();
+        body.put("messages", List.of(
+                Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", text)));
 
         ChatResponse response = post(body);
         if (response == null || response.choices() == null || response.choices().isEmpty()) {
