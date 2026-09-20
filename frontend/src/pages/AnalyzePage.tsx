@@ -193,7 +193,7 @@ export default function AnalyzePage() {
 
                 {s.verbs?.length > 0 && (
                   <>
-                    <Heading>动词</Heading>
+                    <Heading>动词・形容词</Heading>
                     {s.verbs.map((v, j) => (
                       <Row
                         key={j}
@@ -206,7 +206,8 @@ export default function AnalyzePage() {
                           </span>
                           <span className="text-xs text-hai">←</span>
                           <span className="font-mincho text-base text-hai">
-                            {v.dictionaryForm}
+                            {/* 模型给辞书形也注音，不套 Furigana 方括号就露出来了 */}
+                            <Furigana text={v.dictionaryForm} />
                           </span>
                           <span className="text-xs text-hai">{v.reading}</span>
                           <span className="rounded-sm bg-usu px-1.5 py-0.5 text-xs text-sumi">
