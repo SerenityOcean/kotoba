@@ -24,7 +24,7 @@ public class FuriganaService {
                不要删字、不要调整换行、不要翻译、不要解释。
             2. 只把汉字本身放在方括号前面，送り仮名留在外面：
                写「食[た]べる」，不要写「食べ[たべ]る」。
-            3. 假名和数字不用注音。已经有注音的地方保持原样。
+            3. 假名和数字不用注音。已经是「[读音]」这种方括号形式的保持原样。
             4. 直接输出注好音的全文，不要加任何前言后语，不要用代码块包起来。
             """;
 
@@ -32,6 +32,13 @@ public class FuriganaService {
     private static final Pattern RUBY = Pattern.compile("([一-鿿々〆ヶ]+)\\[([^\\[\\]]+)\\]");
 
     private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+
+    /**
+     * 汉字后面紧跟一对括号、里面全是假名 —— 这是注音，不是正常的括号内容。
+     * 从带 ruby 的网页复制下来的文本常是这个样子。
+     */
+    private static final Pattern PAREN_READING =
+            Pattern.compile("([\u4e00-\u9fff々〆ヶ]+)[（(]([\u3041-\u309f\u30a1-\u30ff]+)[）)]");
 
     private final ObjectProvider<AnalysisEngine> engines;
 
@@ -45,13 +52,25 @@ public class FuriganaService {
             throw new AnalysisUnavailableException();
         }
 
-        String annotated = engine.annotate(SYSTEM_PROMPT, text.strip()).strip();
+        // 先做确定性的那一半：原文里「漢字（かな）」形式的注音直接转成方括号。
+        // 从带 ruby 的网页复制下来的文本几乎都是这样，这部分不该花钱问模型，
+        // 也不该冒模型改错的风险。
+        String prepared = bracketize(text.strip());
 
-        // 剥掉注音后必须还是原文，否则模型改了内容，宁可不注音
-        if (!sameText(text, strip(annotated))) {
-            return new FuriganaResult(text, false);
+        String annotated = engine.annotate(SYSTEM_PROMPT, prepared).strip();
+
+        // 剥掉注音后两边必须一字不差，否则模型改了正文内容，宁可不注音。
+        // 注意基准是 prepared 而不是原文 —— 括号转换本身是有意的改动。
+        if (!sameText(strip(prepared), strip(annotated))) {
+            // 退回 prepared 而不是原文：括号转换是确定性的，那部分照样算数
+            return new FuriganaResult(prepared, false);
         }
         return new FuriganaResult(annotated, true);
+    }
+
+    /** 「価値（かち）」→「価値[かち]」。只认汉字打头、括号里全是假名的。 */
+    static String bracketize(String text) {
+        return PAREN_READING.matcher(text).replaceAll("$1[$2]");
     }
 
     /** 去掉方括号记法，留下底字。 */

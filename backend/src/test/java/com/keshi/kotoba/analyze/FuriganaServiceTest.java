@@ -65,6 +65,46 @@ class FuriganaServiceTest {
     }
 
     @Test
+    @DisplayName("原文里的括号注音先确定性地转成方括号，不花钱问模型")
+    void convertsParenthesisedReadings() {
+        assertEquals("価値[かち]や情報[じょうほう]",
+                FuriganaService.bracketize("価値（かち）や情報（じょうほう）"));
+        // 半角括号同样认
+        assertEquals("東京[とうきょう]", FuriganaService.bracketize("東京(とうきょう)"));
+    }
+
+    @Test
+    @DisplayName("不是注音的括号原样留着")
+    void leavesRealParenthesesAlone() {
+        // 括号里是汉字，那是正经的括号内容不是读音
+        assertEquals("東京（首都）", FuriganaService.bracketize("東京（首都）"));
+        // 前面不是汉字，不构成注音
+        assertEquals("これ（それ）", FuriganaService.bracketize("これ（それ）"));
+    }
+
+    @Test
+    @DisplayName("括号注音的原文，模型原样返回也算注音成功")
+    void parenthesisedSourceStillEndsUpBracketed() {
+        // 模型看到已经是方括号了就原样返回，结果仍然是注好音的
+        FuriganaResult result = new FuriganaService(
+                StubEngine.provide(new StubEngine(text -> text)))
+                .annotate("価値（かち）や情報（じょうほう）");
+
+        assertTrue(result.annotated());
+        assertEquals("価値[かち]や情報[じょうほう]", result.text());
+    }
+
+    @Test
+    @DisplayName("模型改了正文时，确定性的括号转换仍然保留")
+    void keepsBracketizationEvenWhenModelIsRejected() {
+        FuriganaResult result = serviceReturning("まったく別[べつ]の文[ぶん]")
+                .annotate("価値（かち）");
+
+        assertFalse(result.annotated());
+        assertEquals("価値[かち]", result.text());
+    }
+
+    @Test
     @DisplayName("没配 key 时明确拒掉")
     void withoutEngineIsRejected() {
         FuriganaService service = new FuriganaService(StubEngine.provide(null));
