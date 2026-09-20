@@ -48,7 +48,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="py-10 sm:py-16">
+    /* 外层容器为了阅读页放宽到了 max-w-3xl，登录表单跟着拉宽会很难看 —— 自己收窄 */
+    <div className="max-w-sm py-4 sm:py-8">
       <div className="mb-8 flex gap-6 text-sm">
         <ModeTab active={mode === 'login'} onClick={() => switchMode('login')}>
           登录

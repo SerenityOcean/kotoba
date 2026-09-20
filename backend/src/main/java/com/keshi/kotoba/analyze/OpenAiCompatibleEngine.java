@@ -58,9 +58,31 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
                 // 真没调函数的话，下面 extractArguments 还会从正文里捞一次
                 "tool_choice", "auto");
 
-        ChatResponse response;
+        return parse(extractArguments(post(body)));
+    }
+
+    @Override
+    public String annotate(String systemPrompt, String text) {
+        Map<String, Object> body = Map.of(
+                "model", model,
+                "messages", List.of(
+                        Map.of("role", "system", "content", systemPrompt),
+                        Map.of("role", "user", "content", text)));
+
+        ChatResponse response = post(body);
+        if (response == null || response.choices() == null || response.choices().isEmpty()) {
+            throw new AnalysisFailedException("模型没有返回任何结果", null);
+        }
+        ChatMessage message = response.choices().getFirst().message();
+        if (message == null || message.content() == null || message.content().isBlank()) {
+            throw new AnalysisFailedException("模型没有返回内容", null);
+        }
+        return message.content();
+    }
+
+    private ChatResponse post(Map<String, Object> body) {
         try {
-            response = http.post()
+            return http.post()
                     .uri("/chat/completions")
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body)
@@ -75,8 +97,6 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
             throw new AnalysisFailedException(
                     "连不上模型服务：" + e.getMostSpecificCause() + "（base-url 和网络都查一下）", e);
         }
-
-        return parse(extractArguments(response));
     }
 
     private JsonNode schemaNode() {
