@@ -24,6 +24,13 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
 
     private static final String TOOL_NAME = "submit_analysis";
 
+    /**
+     * 思考模式下不让强制 tool_choice（qwen3 会直接回 400），所以只能用 auto
+     * 再在提示词里点名。思考对语法分析是有用的，不值得为了强制调用关掉它。
+     */
+    private static final String TOOL_INSTRUCTION =
+            "\n\n把拆解结果通过 " + TOOL_NAME + " 函数提交，不要用普通文字回答。";
+
     private final RestClient http;
     private final ObjectMapper json;
     private final String model;
@@ -39,7 +46,7 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
         Map<String, Object> body = Map.of(
                 "model", model,
                 "messages", List.of(
-                        Map.of("role", "system", "content", systemPrompt),
+                        Map.of("role", "system", "content", systemPrompt + TOOL_INSTRUCTION),
                         Map.of("role", "user", "content", text)),
                 "tools", List.of(Map.of(
                         "type", "function",
@@ -47,10 +54,9 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
                                 "name", TOOL_NAME,
                                 "description", "提交这段日语的拆解结果",
                                 "parameters", schemaNode()))),
-                // 逼它必须走这个函数，别自由发挥回一段散文
-                "tool_choice", Map.of(
-                        "type", "function",
-                        "function", Map.of("name", TOOL_NAME)));
+                // 只能是 auto：思考模式下传对象或 "required" 会被拒。
+                // 真没调函数的话，下面 extractArguments 还会从正文里捞一次
+                "tool_choice", "auto");
 
         ChatResponse response;
         try {
@@ -64,7 +70,10 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
             throw new AnalysisFailedException(
                     "模型服务报错：" + UpstreamErrors.readable(e.getResponseBodyAsString()), e);
         } catch (ResourceAccessException e) {
-            throw new AnalysisFailedException("连不上模型服务，检查一下网络和 base-url", e);
+            // 把底层原因带出来 —— DNS 没解析出来、连接被重置、读超时，
+            // 三种情况处理方式完全不同，笼统一句「连不上」等于没说
+            throw new AnalysisFailedException(
+                    "连不上模型服务：" + e.getMostSpecificCause() + "（base-url 和网络都查一下）", e);
         }
 
         return parse(extractArguments(response));
@@ -75,8 +84,8 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
     }
 
     /**
-     * 正常情况下结果在 tool_calls 里。有的服务偶尔会无视 tool_choice、
-     * 把 JSON 直接写进 content，所以兜一下底再放弃。
+     * 正常情况下结果在 tool_calls 里。但 tool_choice 只能是 auto，模型有时
+     * 会把 JSON 直接写进 content —— 兜一下底再放弃，比让用户白等一次强。
      */
     private String extractArguments(ChatResponse response) {
         if (response == null || response.choices() == null || response.choices().isEmpty()) {
@@ -93,10 +102,21 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
                 return call.function().arguments();
             }
         }
-        if (message.content() != null && !message.content().isBlank()) {
-            return message.content();
+        String json = unwrap(message.content());
+        if (json != null) {
+            return json;
         }
         throw new AnalysisFailedException("模型没有按要求返回结构化结果", null);
+    }
+
+    /** 正文里的 JSON 常裹着 ```json 围栏或前后带一段废话，把花括号那段抠出来。 */
+    static String unwrap(String content) {
+        if (content == null || content.isBlank()) {
+            return null;
+        }
+        int start = content.indexOf('{');
+        int end = content.lastIndexOf('}');
+        return start >= 0 && end > start ? content.substring(start, end + 1) : null;
     }
 
     private Analysis parse(String arguments) {

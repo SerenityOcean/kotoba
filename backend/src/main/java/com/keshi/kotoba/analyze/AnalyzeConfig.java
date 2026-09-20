@@ -29,7 +29,9 @@ public class AnalyzeConfig {
 
     @Bean
     @ConditionalOnExpression(
-            "'${analyze.provider:openai}'.equals('openai') && !'${analyze.openai.api-key:}'.isBlank()")
+            "'${analyze.provider:openai}'.equals('openai')"
+                    + " && !'${analyze.openai.api-key:}'.isBlank()"
+                    + " && !'${analyze.openai.base-url:}'.isBlank()")
     AnalysisEngine openAiCompatibleEngine(@Value("${analyze.openai.base-url}") String baseUrl,
                                           @Value("${analyze.openai.api-key}") String apiKey,
                                           @Value("${analyze.openai.model}") String model,
