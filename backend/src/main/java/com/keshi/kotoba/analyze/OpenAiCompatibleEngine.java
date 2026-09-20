@@ -7,6 +7,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
@@ -23,6 +24,9 @@ import java.util.Map;
 class OpenAiCompatibleEngine implements AnalysisEngine {
 
     private static final String TOOL_NAME = "submit_analysis";
+
+    /** 输出上限。拆解一句话的 JSON 加上思考过程，几千 token 是常态。 */
+    private static final long MAX_TOKENS = 8192;
 
     /**
      * 思考模式下不让强制 tool_choice（qwen3 会直接回 400），所以只能用 auto
@@ -45,6 +49,9 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
     public Analysis analyze(String systemPrompt, String text) {
         Map<String, Object> body = Map.of(
                 "model", model,
+                // 不给的话用服务端默认值，而思考模式的 token 也算在里面 ——
+                // 拆解的 JSON 本来就长，很容易被截断成半句
+                "max_tokens", MAX_TOKENS,
                 "messages", List.of(
                         Map.of("role", "system", "content", systemPrompt + TOOL_INSTRUCTION),
                         Map.of("role", "user", "content", text)),
@@ -65,6 +72,7 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
     public String annotate(String systemPrompt, String text) {
         Map<String, Object> body = Map.of(
                 "model", model,
+                "max_tokens", MAX_TOKENS,
                 "messages", List.of(
                         Map.of("role", "system", "content", systemPrompt),
                         Map.of("role", "user", "content", text)));
@@ -129,6 +137,26 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
         throw new AnalysisFailedException("模型没有按要求返回结构化结果", null);
     }
 
+    /**
+     * 有的服务会把嵌套结构再序列化一层塞回来：整个对象是个 JSON 字符串，
+     * 或者 sentences 的值是字符串而不是数组。碰上了就再解一层，
+     * 比让整次拆解白跑一趟强。
+     */
+    JsonNode unwrapDoubleEncoded(JsonNode node) {
+        JsonNode root = node;
+        // 整体被包成字符串：最多解两层，再多就不是这个毛病了
+        for (int i = 0; i < 2 && root.isString(); i++) {
+            root = json.readTree(root.stringValue());
+        }
+        if (root.isObject()) {
+            JsonNode sentences = root.get("sentences");
+            if (sentences != null && sentences.isString()) {
+                ((ObjectNode) root).set("sentences", json.readTree(sentences.stringValue()));
+            }
+        }
+        return root;
+    }
+
     /** 正文里的 JSON 常裹着 ```json 围栏或前后带一段废话，把花括号那段抠出来。 */
     static String unwrap(String content) {
         if (content == null || content.isBlank()) {
@@ -141,9 +169,12 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
 
     private Analysis parse(String arguments) {
         try {
-            return json.readValue(arguments, Analysis.class);
+            return json.treeToValue(unwrapDoubleEncoded(json.readTree(arguments)), Analysis.class);
         } catch (JacksonException e) {
-            throw new AnalysisFailedException("模型返回的结果看不懂，可能被截断了", e);
+            // 带上原因和长度：截断和格式不对是两回事，光说「看不懂」没法排查
+            throw new AnalysisFailedException(
+                    "模型返回的结果解析不了（" + arguments.length() + " 字符）："
+                            + e.getOriginalMessage(), e);
         }
     }
 
