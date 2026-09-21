@@ -1,5 +1,6 @@
 package com.keshi.kotoba.analyze;
 
+import com.keshi.kotoba.text.FuriganaNotation;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
@@ -28,17 +29,7 @@ public class FuriganaService {
             4. 直接输出注好音的全文，不要加任何前言后语，不要用代码块包起来。
             """;
 
-    /** 和前端 Furigana 组件同一套记法：底字只认汉字。 */
-    private static final Pattern RUBY = Pattern.compile("([一-鿿々〆ヶ]+)\\[([^\\[\\]]+)\\]");
-
     private static final Pattern WHITESPACE = Pattern.compile("\\s+");
-
-    /**
-     * 汉字后面紧跟一对括号、里面全是假名 —— 这是注音，不是正常的括号内容。
-     * 从带 ruby 的网页复制下来的文本常是这个样子。
-     */
-    private static final Pattern PAREN_READING =
-            Pattern.compile("([\u4e00-\u9fff々〆ヶ]+)[（(]([\u3041-\u309f\u30a1-\u30ff]+)[）)]");
 
     private final ObjectProvider<AnalysisEngine> engines;
 
@@ -70,12 +61,12 @@ public class FuriganaService {
 
     /** 「価値（かち）」→「価値[かち]」。只认汉字打头、括号里全是假名的。 */
     static String bracketize(String text) {
-        return PAREN_READING.matcher(text).replaceAll("$1[$2]");
+        return FuriganaNotation.bracketize(text);
     }
 
     /** 去掉方括号记法，留下底字。 */
     static String strip(String annotated) {
-        return RUBY.matcher(annotated).replaceAll("$1");
+        return FuriganaNotation.strip(annotated);
     }
 
     /** 空白差异不算改动 —— 模型常把换行变成空格，那个不伤内容。 */
