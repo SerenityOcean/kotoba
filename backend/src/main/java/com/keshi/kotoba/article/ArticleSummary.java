@@ -1,5 +1,7 @@
 package com.keshi.kotoba.article;
 
+import com.keshi.kotoba.text.FuriganaNotation;
+
 import java.time.Instant;
 
 /**
@@ -18,7 +20,9 @@ public record ArticleSummary(
     private static final int EXCERPT_LENGTH = 60;
 
     public static ArticleSummary from(Article article) {
-        String body = article.getBody();
+        // 先剥注音再截断：方括号既占字数配额，又可能从注音中间被切断，
+        // 列表里就会露出「適当[てき」这种半截记法
+        String body = FuriganaNotation.strip(article.getBody());
         return new ArticleSummary(
                 article.getId(),
                 article.getTitle(),

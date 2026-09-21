@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   annotateFurigana,
@@ -17,6 +17,7 @@ export default function ArticlesPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  const [query, setQuery] = useState('')
   const [adding, setAdding] = useState(false)
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
@@ -104,8 +105,45 @@ export default function ArticlesPage() {
     }
   }
 
+  const stats = useMemo(
+    () => ({
+      count: articles.length,
+      chars: articles.reduce((sum, a) => sum + a.length, 0),
+      // 最近一次保存，没有文章时为 null
+      latest: articles[0]?.createdAt ?? null,
+    }),
+    [articles],
+  )
+
+  // 只按标题筛，在已经加载好的列表上做 —— 不用多跑一趟后端
+  const visible = useMemo(() => {
+    const keyword = query.trim().toLowerCase()
+    if (keyword === '') return articles
+    return articles.filter((a) => a.title.toLowerCase().includes(keyword))
+  }, [articles, query])
+
   return (
     <div>
+      {articles.length > 0 && (
+        <section className="mb-8 border-b border-usu pb-6">
+          <div className="flex items-end gap-10">
+            <Stat label="文章" value={stats.count} accent />
+            <Stat label="总字数" value={stats.chars} />
+            {stats.latest && (
+              <div>
+                <div className="font-mincho text-2xl tabular-nums text-sumi">
+                  {new Date(stats.latest).toLocaleDateString('zh-CN', {
+                    month: 'numeric',
+                    day: 'numeric',
+                  })}
+                </div>
+                <div className="mt-1 text-xs tracking-wider text-hai">最近保存</div>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       <section className="mb-8 border-b border-usu pb-8">
         {!adding ? (
           <button
@@ -183,15 +221,28 @@ export default function ArticlesPage() {
         {error && <p className="mt-3 text-sm text-shu">{error}</p>}
       </section>
 
+      {articles.length > 1 && (
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="按标题搜索"
+          className="mb-2 w-full border-b border-usu bg-transparent pb-1.5 text-sm placeholder:text-hai/40 focus:border-ai focus:outline-none"
+        />
+      )}
+
       {loading ? (
         <p className="text-sm text-hai">加载中…</p>
       ) : articles.length === 0 ? (
         <p className="py-10 text-center text-sm text-hai">
           还没有文章。把你最近读的那篇存进来。
         </p>
+      ) : visible.length === 0 ? (
+        <p className="py-10 text-center text-sm text-hai">
+          没有标题包含「{query.trim()}」的文章。
+        </p>
       ) : (
         <ul>
-          {articles.map((article) => (
+          {visible.map((article) => (
             <li key={article.id} className="group border-b border-usu py-4">
               <div className="flex items-baseline gap-3">
                 <Link
@@ -218,6 +269,18 @@ export default function ArticlesPage() {
           ))}
         </ul>
       )}
+    </div>
+  )
+}
+
+/** 和首页的统计块同一套观感 —— 大字号数字 + 小字标签。 */
+function Stat({ label, value, accent = false }: { label: string; value: number; accent?: boolean }) {
+  return (
+    <div>
+      <div className={`font-mincho text-4xl tabular-nums ${accent ? 'text-ai' : 'text-sumi'}`}>
+        {value.toLocaleString('zh-CN')}
+      </div>
+      <div className="mt-1 text-xs tracking-wider text-hai">{label}</div>
     </div>
   )
 }
