@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { fetchArticle } from '../api'
-import type { Article } from '../api'
+import { fetchArticle, fetchArticles } from '../api'
+import type { Article, ArticleSummary } from '../api'
 import { useAnalysis } from '../analysis'
 import Furigana from '../components/Furigana'
 import AnalysisResults, { SaveBar } from '../components/AnalysisResults'
@@ -34,10 +34,14 @@ export default function ArticlePage() {
   const { id } = useParams()
   const [article, setArticle] = useState<Article | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [siblings, setSiblings] = useState<ArticleSummary[]>([])
   const [selection, setSelection] = useState('')
   // 已经拆过的那段。选中它时不用再弹按钮 —— 没有新东西可拆
   const [analyzed, setAnalyzed] = useState('')
   const analysis = useAnalysis()
+  // 单独取出来：analysis 每次渲染都是新对象，但 reset 被 useCallback 包过、
+  // 身份稳定，effect 依赖它才不会无限重跑
+  const { reset } = analysis
 
   function analyze(text: string) {
     setAnalyzed(text)
@@ -46,10 +50,25 @@ export default function ArticlePage() {
 
   useEffect(() => {
     if (!id) return
+    // 换文章时先清空：否则新的还没到，旧正文还挂在屏幕上，像是没跳转
+    setArticle(null)
+    setSelection('')
+    setAnalyzed('')
+    reset()
+    window.scrollTo(0, 0)
+
     fetchArticle(Number(id))
       .then(setArticle)
       .catch((e) => setError(e instanceof Error ? e.message : '加载失败'))
-  }, [id])
+  }, [id, reset])
+
+  // 上一篇/下一篇要知道自己在整个列表里的位置。列表只有摘要，很轻，
+  // 而且顺序（保存时间倒序）就是导航顺序，不用后端再算一次
+  useEffect(() => {
+    fetchArticles()
+      .then(setSiblings)
+      .catch(() => {})
+  }, [])
 
   /**
    * 选中了什么。用 selectionchange 而不是 mouseup：键盘选、触屏拖动
@@ -65,6 +84,11 @@ export default function ArticlePage() {
 
   if (error) return <p className="text-sm text-shu">{error}</p>
   if (!article) return <p className="text-sm text-hai">加载中…</p>
+
+  // 列表是保存时间倒序，所以「上一篇」是列表里更靠上、也就是更新的那篇
+  const index = siblings.findIndex((a) => a.id === article.id)
+  const previous = index > 0 ? siblings[index - 1] : null
+  const next = index >= 0 && index < siblings.length - 1 ? siblings[index + 1] : null
 
   const showPanel = analysis.slots.length > 0
   // 选中了新的一段（不是刚拆过那段）才值得提示
@@ -108,6 +132,36 @@ export default function ArticlePage() {
             <Furigana text={article.body} />
           </div>
         </article>
+
+        {(previous || next) && (
+          <nav className="mt-16 flex items-stretch gap-4 border-t border-usu pt-6 text-sm">
+            {previous ? (
+              <Link
+                to={`/reading/${previous.id}`}
+                className="group min-w-0 flex-1 transition hover:text-ai"
+              >
+                <span className="block text-xs text-hai">← 上一篇</span>
+                <span className="mt-1 block truncate font-mincho text-base">
+                  {previous.title}
+                </span>
+              </Link>
+            ) : (
+              <span className="flex-1" />
+            )}
+
+            {next ? (
+              <Link
+                to={`/reading/${next.id}`}
+                className="min-w-0 flex-1 text-right transition hover:text-ai"
+              >
+                <span className="block text-xs text-hai">下一篇 →</span>
+                <span className="mt-1 block truncate font-mincho text-base">{next.title}</span>
+              </Link>
+            ) : (
+              <span className="flex-1" />
+            )}
+          </nav>
+        )}
 
         {/* 选中了但还没拆：浮一条出来，点了才花钱。面板开着时按钮挪到面板顶部 */}
         {pending !== '' && !showPanel && (
