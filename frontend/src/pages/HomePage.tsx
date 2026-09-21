@@ -108,42 +108,89 @@ function Stat({
 }
 
 /**
- * 白板：一次只放一句话，刷新换下一句。
+ * 白板：一次只放一句话，刷新换一句。
  *
  * 这块地方原来写的是「有 N 张等着你」—— 待复习数上面那排统计里已经有了，
  * 中间再喊一遍只是加压，数字越大越不想点。换成一句安静的话，
  * 让人愿意在首页多停两秒。
  *
- * 顺序轮换而不是随机：随机会连着重复，而「刷新换下一句」本来就该是顺的。
- * 进度记在 localStorage，读不到就从头开始 —— 无痕窗口和清过站点数据的
+ * 不是纯随机，是「洗牌后走完一轮再洗」：纯随机在 44 句的规模下很容易
+ * 连着撞到同一句，而且看全之前会反复重复。洗牌保证每句都轮得到，
+ * 顺序又不可预测 —— 音乐播放器的随机播放也是这么做的。
+ *
+ * 进度记在 localStorage，读不到就重新洗一副：无痕窗口和清过站点数据的
  * 浏览器都可能读不到，这不是错误。
  */
-const CURSOR_KEY = 'kotoba:quote-cursor'
+const CYCLE_KEY = 'kotoba:quote-cycle'
+
+interface Cycle {
+  order: number[]
+  cursor: number
+}
+
+/** Fisher-Yates。avoidFirst 是上一轮的最后一句，别让新一轮开头撞上它。 */
+function shuffle(size: number, avoidFirst?: number): number[] {
+  const order = Array.from({ length: size }, (_, i) => i)
+  for (let i = size - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[order[i], order[j]] = [order[j], order[i]]
+  }
+  // 新一轮第一句正好是上一轮最后一句的话，看着就像没换
+  if (avoidFirst !== undefined && order.length > 1 && order[0] === avoidFirst) {
+    ;[order[0], order[1]] = [order[1], order[0]]
+  }
+  return order
+}
+
+/** 走到头就重新洗一副，否则游标 +1。 */
+function advance(cycle: Cycle): Cycle {
+  const next = cycle.cursor + 1
+  if (next < cycle.order.length) {
+    return { ...cycle, cursor: next }
+  }
+  return { order: shuffle(QUOTES.length, cycle.order.at(-1)), cursor: 0 }
+}
+
+function loadCycle(): Cycle {
+  try {
+    const raw = localStorage.getItem(CYCLE_KEY)
+    if (raw) {
+      const saved = JSON.parse(raw) as Cycle
+      // 句子增删过之后旧的排列就对不上了，重洗
+      if (
+        Array.isArray(saved.order) &&
+        saved.order.length === QUOTES.length &&
+        Number.isInteger(saved.cursor) &&
+        saved.cursor >= 0 &&
+        saved.cursor < saved.order.length
+      ) {
+        return saved
+      }
+    }
+  } catch {
+    // 读不到就当第一次来
+  }
+  return { order: shuffle(QUOTES.length), cursor: 0 }
+}
 
 function QuoteBoard() {
-  const [cursor, setCursor] = useState(() => {
-    try {
-      const saved = Number(localStorage.getItem(CURSOR_KEY))
-      return Number.isInteger(saved) ? saved : 0
-    } catch {
-      return 0
-    }
-  })
+  const [cycle, setCycle] = useState(loadCycle)
 
-  // 进来先把游标往后推一格存回去，下次刷新自然是下一句
+  // 进来先把游标推一格存回去，下次刷新自然是下一句
   useEffect(() => {
     try {
-      localStorage.setItem(CURSOR_KEY, String((cursor + 1) % QUOTES.length))
+      localStorage.setItem(CYCLE_KEY, JSON.stringify(advance(cycle)))
     } catch {
       // 存不了就算了，只是下次刷新还是这句
     }
-  }, [cursor])
+  }, [cycle])
 
-  const quote = QUOTES[((cursor % QUOTES.length) + QUOTES.length) % QUOTES.length]
+  const index = cycle.order[cycle.cursor] ?? 0
+  const quote = QUOTES[index]
 
   return (
     <section className="py-16 sm:py-20">
-      <figure key={cursor} className="animate-quote mx-auto max-w-xl">
+      <figure key={index} className="animate-quote mx-auto max-w-xl">
         <blockquote className="font-mincho text-xl leading-[2.1] whitespace-pre-line text-sumi sm:text-2xl sm:leading-[2.2]">
           {quote.text}
         </blockquote>
@@ -156,7 +203,7 @@ function QuoteBoard() {
 
       <div className="mt-10 text-center">
         <button
-          onClick={() => setCursor((c) => c + 1)}
+          onClick={() => setCycle(advance)}
           className="text-xs tracking-wider text-hai transition hover:text-sumi"
         >
           换一句
