@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchDecks, fetchStats } from '../api'
 import type { Deck, Stats } from '../api'
+import { QUOTES } from '../quotes'
 
 export default function HomePage() {
   const [stats, setStats] = useState<Stats | null>(null)
@@ -31,37 +32,25 @@ export default function HomePage() {
         </div>
       </section>
 
-      <div className="py-14 text-center">
+      <QuoteBoard />
+
+      <div className="pb-14 text-center">
         {stats.totalCards === 0 ? (
-          <>
-            <p className="font-mincho text-xl">还没有卡片</p>
-            <p className="mt-2 text-sm text-hai">
-              先去添加几个你最近遇到的词。
-            </p>
-            <button
-              onClick={() => navigate('/cards')}
-              className="mt-8 rounded-sm border border-sumi px-6 py-2.5 text-sm transition hover:bg-sumi hover:text-washi"
-            >
-              添加卡片
-            </button>
-          </>
+          <button
+            onClick={() => navigate('/cards')}
+            className="rounded-sm border border-sumi px-6 py-2.5 text-sm transition hover:bg-sumi hover:text-washi"
+          >
+            添加卡片
+          </button>
         ) : stats.dueToday === 0 ? (
-          <>
-            <p className="font-mincho text-2xl">今日已清空</p>
-            <p className="mt-2 text-sm text-hai">明天再来。</p>
-          </>
+          <p className="text-sm text-hai">今日已清空，明天再来。</p>
         ) : (
-          <>
-            <p className="font-mincho text-2xl">
-              有 <span className="text-ai">{stats.dueToday}</span> 张等着你
-            </p>
-            <button
-              onClick={() => navigate('/review')}
-              className="mt-8 rounded-sm bg-ai px-8 py-3 text-sm text-washi transition hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai"
-            >
-              开始复习
-            </button>
-          </>
+          <button
+            onClick={() => navigate('/review')}
+            className="rounded-sm bg-ai px-8 py-3 text-sm text-washi transition hover:opacity-85 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ai"
+          >
+            开始复习
+          </button>
         )}
       </div>
 
@@ -115,5 +104,64 @@ function Stat({
       </div>
       <div className="mt-1 text-xs tracking-wider text-hai">{label}</div>
     </div>
+  )
+}
+
+/**
+ * 白板：一次只放一句话，刷新换下一句。
+ *
+ * 这块地方原来写的是「有 N 张等着你」—— 待复习数上面那排统计里已经有了，
+ * 中间再喊一遍只是加压，数字越大越不想点。换成一句安静的话，
+ * 让人愿意在首页多停两秒。
+ *
+ * 顺序轮换而不是随机：随机会连着重复，而「刷新换下一句」本来就该是顺的。
+ * 进度记在 localStorage，读不到就从头开始 —— 无痕窗口和清过站点数据的
+ * 浏览器都可能读不到，这不是错误。
+ */
+const CURSOR_KEY = 'kotoba:quote-cursor'
+
+function QuoteBoard() {
+  const [cursor, setCursor] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem(CURSOR_KEY))
+      return Number.isInteger(saved) ? saved : 0
+    } catch {
+      return 0
+    }
+  })
+
+  // 进来先把游标往后推一格存回去，下次刷新自然是下一句
+  useEffect(() => {
+    try {
+      localStorage.setItem(CURSOR_KEY, String((cursor + 1) % QUOTES.length))
+    } catch {
+      // 存不了就算了，只是下次刷新还是这句
+    }
+  }, [cursor])
+
+  const quote = QUOTES[((cursor % QUOTES.length) + QUOTES.length) % QUOTES.length]
+
+  return (
+    <section className="py-16 sm:py-20">
+      <figure key={cursor} className="animate-quote mx-auto max-w-xl">
+        <blockquote className="font-mincho text-xl leading-[2.1] whitespace-pre-line text-sumi sm:text-2xl sm:leading-[2.2]">
+          {quote.text}
+        </blockquote>
+        {quote.source && (
+          <figcaption className="mt-6 text-right text-xs tracking-wider text-hai">
+            —— {quote.source}
+          </figcaption>
+        )}
+      </figure>
+
+      <div className="mt-10 text-center">
+        <button
+          onClick={() => setCursor((c) => c + 1)}
+          className="text-xs tracking-wider text-hai transition hover:text-sumi"
+        >
+          换一句
+        </button>
+      </div>
+    </section>
   )
 }
