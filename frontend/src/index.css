@@ -22,3 +22,25 @@ ruby > rt {
 .ruby-block {
   line-height: 2.1;
 }
+
+/* 白板换句时的浮入：轻一点，别抢正文的注意力 */
+@keyframes quote-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-quote {
+  animation: quote-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-quote {
+    animation: none;
+  }
+}
