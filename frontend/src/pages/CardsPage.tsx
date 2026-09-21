@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   createCard,
   deleteCard,
@@ -29,6 +29,9 @@ export default function CardsPage() {
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
 
+  const [query, setQuery] = useState('')
+  // 正在等待二次确认的那张卡。一次只允许一张，点了别张就把上一张收回去
+  const [confirmingId, setConfirmingId] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editFront, setEditFront] = useState('')
   const [editBack, setEditBack] = useState('')
@@ -73,6 +76,7 @@ export default function CardsPage() {
 
   async function handleDelete(id: number) {
     try {
+      setConfirmingId(null)
       await deleteCard(id)
       await load()
     } catch (e) {
@@ -81,6 +85,7 @@ export default function CardsPage() {
   }
 
   function startEdit(card: Card) {
+    setConfirmingId(null)
     setEditingId(card.id)
     setEditFront(card.front)
     setEditBack(card.back ?? '')
@@ -106,6 +111,17 @@ export default function CardsPage() {
       setError(e instanceof Error ? e.message : '保存失败')
     }
   }
+
+  const visible = useMemo(() => {
+    const keyword = query.trim().toLowerCase()
+    if (keyword === '') return cards
+    // 剥掉注音再比：库里存的是「勉強[べんきょう]」，而你搜的是「勉強」
+    const bare = (text: string | null) =>
+      (text ?? '').replace(/\[[^[\]]+\]/g, '').toLowerCase()
+    return cards.filter(
+      (c) => bare(c.front).includes(keyword) || bare(c.back).includes(keyword),
+    )
+  }, [cards, query])
 
   const parsed = parseImportText(importText)
 
@@ -240,6 +256,22 @@ export default function CardsPage() {
         {error && <p className="mt-3 text-sm text-shu">{error}</p>}
       </section>
 
+      {cards.length > 0 && (
+        <div className="flex items-baseline gap-4 border-b border-usu pb-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜索正面或背面"
+            className="min-w-0 flex-1 bg-transparent text-sm placeholder:text-hai/40 focus:outline-none"
+          />
+          <span className="shrink-0 text-xs tabular-nums text-hai">
+            {query.trim() === ''
+              ? `${cards.length} 张`
+              : `${visible.length} / ${cards.length} 张`}
+          </span>
+        </div>
+      )}
+
       {loading ? (
         <p className="text-sm text-hai">加载中…</p>
       ) : cards.length === 0 ? (
@@ -248,9 +280,13 @@ export default function CardsPage() {
             ? `「${selectedDeck.name}」还是空的。`
             : '还没有卡片。在上面加一个你今天遇到的词。'}
         </p>
+      ) : visible.length === 0 ? (
+        <p className="py-10 text-center text-sm text-hai">
+          没有包含「{query.trim()}」的卡片。
+        </p>
       ) : (
         <ul>
-          {cards.map((card) =>
+          {visible.map((card) =>
             editingId === card.id ? (
               <li key={card.id} className="border-b border-usu py-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -308,18 +344,39 @@ export default function CardsPage() {
                 <span className="text-xs tabular-nums text-hai">
                   {card.repetitions} 次
                 </span>
-                <button
-                  onClick={() => startEdit(card)}
-                  className="text-xs text-hai transition hover:text-ai sm:opacity-0 sm:group-hover:opacity-100"
-                >
-                  编辑
-                </button>
-                <button
-                  onClick={() => handleDelete(card.id)}
-                  className="text-xs text-hai transition hover:text-shu sm:opacity-0 sm:group-hover:opacity-100"
-                >
-                  删除
-                </button>
+                {confirmingId === card.id ? (
+                  <>
+                    {/* 行内确认，不弹窗 —— 和删包那套一致。只用两个控件，
+                        宽度贴近原来的「编辑 删除」，这一行的其余内容不会被推动 */}
+                    <button
+                      onClick={() => handleDelete(card.id)}
+                      className="shrink-0 text-xs text-shu transition hover:underline"
+                    >
+                      确认删除
+                    </button>
+                    <button
+                      onClick={() => setConfirmingId(null)}
+                      className="shrink-0 text-xs text-hai transition hover:text-sumi"
+                    >
+                      取消
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => startEdit(card)}
+                      className="text-xs text-hai transition hover:text-ai sm:opacity-0 sm:group-hover:opacity-100"
+                    >
+                      编辑
+                    </button>
+                    <button
+                      onClick={() => setConfirmingId(card.id)}
+                      className="text-xs text-hai transition hover:text-shu sm:opacity-0 sm:group-hover:opacity-100"
+                    >
+                      删除
+                    </button>
+                  </>
+                )}
               </li>
             ),
           )}
