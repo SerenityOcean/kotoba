@@ -197,6 +197,39 @@ export async function deleteDeck(id: number): Promise<void> {
   }
 }
 
+// ---- 彼岸 ----------------------------------------------------------------
+
+export interface Goal {
+  title: string
+  /** 不带时区的日期，形如 2026-12-06 */
+  targetDate: string
+  /** 立下目标的时刻，周格子从这里数起 */
+  startedAt: string
+}
+
+/** 还没立目标时后端回 204，这里给 null。 */
+export async function fetchGoal(): Promise<Goal | null> {
+  const res = await fetch('/api/goal')
+  if (res.status === 204) return null
+  return handle<Goal>(res)
+}
+
+export async function saveGoal(title: string, targetDate: string): Promise<Goal> {
+  const res = await fetch('/api/goal', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, targetDate }),
+  })
+  return handle<Goal>(res)
+}
+
+export async function clearGoal(): Promise<void> {
+  const res = await fetch('/api/goal', { method: 'DELETE' })
+  if (!res.ok) {
+    throw await toError(res, `清除失败：${res.status}`)
+  }
+}
+
 /**
  * 把粘进来的文本切成句子。逐句并行拆解，哪句先回来先显示 ——
  * 等待时间就从「所有句子之和」变成「最慢的那一句」。

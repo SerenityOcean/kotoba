@@ -6,7 +6,10 @@ import AnalyzePage from './pages/AnalyzePage'
 import ArticlesPage from './pages/ArticlesPage'
 import ArticlePage from './pages/ArticlePage'
 import LoginPage from './pages/LoginPage'
+import HiganPage from './pages/HiganPage'
 import { useAuth } from './auth-context'
+import { useGoal } from './goal-context'
+import { countdown } from './goal-time'
 
 export default function App() {
   const { user, ready } = useAuth()
@@ -35,15 +38,19 @@ export default function App() {
           </div>
 
           {user && (
-            <nav className="flex items-baseline gap-6 text-sm">
-              <NavItem to="/" end>
-                首页
-              </NavItem>
-              <NavItem to="/reading">阅读</NavItem>
-              <NavItem to="/analyze">拆解</NavItem>
-              <NavItem to="/cards">卡片</NavItem>
-              <UserMenu />
-            </nav>
+            <div className="flex flex-col items-start gap-4 sm:items-end">
+              <GoalCountdown />
+              <nav className="flex items-baseline gap-6 text-sm">
+                <NavItem to="/" end>
+                  首页
+                </NavItem>
+                <NavItem to="/reading">阅读</NavItem>
+                <NavItem to="/analyze">拆解</NavItem>
+                <NavItem to="/cards">卡片</NavItem>
+                <NavItem to="/higan">彼岸</NavItem>
+                <UserMenu />
+              </nav>
+            </div>
           )}
         </header>
 
@@ -101,6 +108,14 @@ export default function App() {
                 </RequireAuth>
               }
             />
+            <Route
+              path="/higan"
+              element={
+                <RequireAuth>
+                  <HiganPage />
+                </RequireAuth>
+              }
+            />
             <Route path="*" element={<NotFound />} />
           </Routes>
         )}
@@ -135,6 +150,37 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
   return children
+}
+
+/**
+ * 导航上方那一行：离彼岸还有几周几天。每个页面都看得到，所以要足够轻 ——
+ * 没立目标、或者目标日已经过了，就什么都不显示，也不催人去立。
+ */
+function GoalCountdown() {
+  const { goal } = useGoal()
+  if (!goal) return null
+
+  const { days, weeks } = countdown(goal)
+  if (days < 0) return null
+
+  return (
+    <NavLink
+      to="/higan"
+      title={`目标日 ${goal.targetDate}`}
+      className="group flex items-baseline gap-3 text-hai transition hover:text-sumi"
+    >
+      <span className="max-w-[12em] truncate text-xs tracking-wider">{goal.title}</span>
+      {days === 0 ? (
+        <span className="font-mincho text-lg text-ai">就是今天</span>
+      ) : (
+        <span className="text-xs">
+          <span className="font-mincho text-lg tabular-nums text-sumi">{weeks}</span> 周
+          <span className="mx-1.5 text-usu group-hover:text-hai">·</span>
+          <span className="font-mincho text-lg tabular-nums text-sumi">{days}</span> 天
+        </span>
+      )}
+    </NavLink>
+  )
 }
 
 function UserMenu() {
