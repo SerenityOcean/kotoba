@@ -7,9 +7,16 @@ import ArticlesPage from './pages/ArticlesPage'
 import ArticlePage from './pages/ArticlePage'
 import LoginPage from './pages/LoginPage'
 import HiganPage from './pages/HiganPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
+import VerifyEmailPage from './pages/VerifyEmailPage'
+import AccountPage from './pages/AccountPage'
 import { useAuth } from './auth-context'
 import { useGoal } from './goal-context'
 import { countdown } from './goal-time'
+
+/** 没登录时用的那几页：只有一块表单，收窄居中。 */
+const SIGNED_OUT_PAGES = ['/login', '/forgot-password', '/reset-password', '/verify-email']
 
 export default function App() {
   const { user, ready } = useAuth()
@@ -18,7 +25,8 @@ export default function App() {
   // 读文章时给宽屏留出第二栏放拆解面板；其余页面维持易读的窄栏宽度
   const wide = /^\/reading\/[^/]+$/.test(location.pathname)
   // 登录页只有一块内容，没有导航在右边配重，靠左排会明显偏心 —— 单独收窄居中
-  const centered = location.pathname === '/login'
+  // 找回密码、邮件链接落地页同理；但已登录的人点开邮件链接时照常显示导航
+  const centered = !user && SIGNED_OUT_PAGES.includes(location.pathname)
 
   const width = centered ? 'max-w-sm' : wide ? 'max-w-6xl' : 'max-w-3xl'
 
@@ -60,6 +68,18 @@ export default function App() {
         ) : (
           <Routes>
             <Route path="/login" element={<LoginRoute />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            {/* 这两个是邮件链接的落地页，登没登录都能打开 */}
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route
+              path="/account"
+              element={
+                <RequireAuth>
+                  <AccountPage />
+                </RequireAuth>
+              }
+            />
             <Route
               path="/"
               element={
@@ -188,7 +208,15 @@ function UserMenu() {
 
   return (
     <span className="flex items-baseline gap-2 border-l border-usu pl-5">
-      <span className="text-hai">{user?.username}</span>
+      <NavLink
+        to="/account"
+        title="账号设置"
+        className={({ isActive }) =>
+          isActive ? 'text-sumi' : 'text-hai transition hover:text-sumi'
+        }
+      >
+        {user?.username}
+      </NavLink>
       <button
         onClick={() => logout()}
         className="text-xs text-hai transition hover:text-shu"

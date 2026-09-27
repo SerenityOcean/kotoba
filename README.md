@@ -102,14 +102,24 @@ Plans & Billing 里单独充值。
 ## 登录
 
 第一次用要先注册：打开前端 → 「注册」→ 填用户名和密码（至少 8 位）。
+登录后点导航上的用户名进账号页：改密码、绑邮箱、绑 GitHub、看/踢登录设备。
 
-数据库里原来那个 `keshi` 账号如果密码还是迁移脚本留下的占位值 `NOT_SET`，
-用同名注册就是「认领」它 —— 密码设上，原来的卡片都还在。
-忘了密码也走这条路：
+- **会话**：服务端 session + cookie，保留 30 天。session 存在 Postgres 的
+  `spring_session` 表里（Spring Session JDBC），后端重启、发版都不会把人踢下线。
+- **CSRF**：cookie 是 `SameSite=Lax`，写请求要带 `X-XSRF-TOKEN` 头（值来自
+  `XSRF-TOKEN` cookie），`api.ts` 的 `apiFetch` 统一处理。新写的请求别直接用 `fetch`。
+- **限流**：同一 IP 对同一账号连错 5 次锁 15 分钟；每个 IP 10 分钟最多 30 次登录、
+  1 小时最多注册 5 次、发 5 封邮件。计数在内存里，单实例够用。
+- **找回密码**：要先在账号页绑定并验证邮箱。没配 SMTP 时这个功能自动隐藏；
+  本地想走通流程，启动后端时加 `MAIL_LOG_LINKS=true`，邮件里的链接会打在日志里。
+- **GitHub 登录**：配了 `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` 才出现。
+  本地开发的 OAuth App callback 填 `http://localhost:5173/api/login/oauth2/code/github`。
 
-    UPDATE app_user SET password_hash = 'NOT_SET' WHERE username = 'keshi';
+没有密码的账号（V2 迁移留下的 `keshi` 占位行、GitHub 建的号）**不能**再靠同名注册
+「认领」—— 那等于谁先来谁拿走。要给这种账号设密码，直接在库里写哈希：
 
-然后重新注册一次即可。
+    read -rs PW && htpasswd -bnBC 10 "" "$PW" | tr -d ':\n'; unset PW
+    # 把输出的 $2y$10$... 填进去
+    UPDATE app_user SET password_hash = '$2y$10$...' WHERE username = 'keshi';
 
-登录态是服务端 session + cookie，保留 30 天。后端重启会把 session 清空
-（存在内存里），所有人需要重新登录一次。
+忘了密码又没绑邮箱，也是这个办法。
