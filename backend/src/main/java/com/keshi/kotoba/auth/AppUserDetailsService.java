@@ -20,8 +20,8 @@ public class AppUserDetailsService implements UserDetailsService {
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         return users.findByUsername(username)
                 .map(AppUserPrincipal::of)
-                // 占位账号（password_hash = 'NOT_SET'）能查到，但 'NOT_SET' 不是合法
-                // bcrypt 串，密码比对必然失败 —— 得先走 /api/auth/register 认领。
+                // 没有密码的账号（password_hash = 'NOT_SET'）能查到，但 'NOT_SET' 不是合法
+                // bcrypt 串，密码比对必然失败 —— 这种号只能走 GitHub 登录或先去账号页设密码。
                 .orElseThrow(() -> new UsernameNotFoundException("用户不存在：" + username));
     }
 }

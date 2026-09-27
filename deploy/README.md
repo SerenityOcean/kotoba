@@ -89,8 +89,35 @@ HTTP 调试就没办法了。
 
 ## 登录相关
 
-- session 存在后端内存里，`systemctl restart kotoba` 之后所有人要重新登录。
-- 会话 cookie 是 `SameSite=Strict` + `Secure`（`.env` 里 `COOKIE_SECURE=true`）。
+- session 存在 Postgres 的 `spring_session` 表里，`systemctl restart kotoba` 不会让人掉线。
+  表由 Flyway 的 V6 建；过期会话后端每分钟自己清。
+- `.env` 里跟登录有关的变量：
+
+      COOKIE_SECURE=true                 # 已上 HTTPS，必须开
+      APP_BASE_URL=https://kotoba.work   # 邮件链接、GitHub 回调都从它拼，不带结尾的 /
+
+      # 找回密码 / 绑定邮箱（不配就自动隐藏这两个功能）
+      MAIL_HOST=smtp.qq.com              # 或 smtp.163.com、阿里云邮件推送等
+      MAIL_PORT=465
+      MAIL_USERNAME=xxx@qq.com
+      MAIL_PASSWORD=<SMTP 授权码，不是邮箱登录密码>
+      MAIL_FROM=言葉 <xxx@qq.com>
+
+      # GitHub 登录（不配就不显示按钮）
+      GITHUB_CLIENT_ID=...
+      GITHUB_CLIENT_SECRET=...
+
+- GitHub OAuth App 的 Authorization callback URL 填
+  `https://kotoba.work/api/login/oauth2/code/github`，和 `APP_BASE_URL` 必须一致。
+- 限流按真实 IP 算，靠 nginx 传的 `X-Forwarded-For`（后端开了
+  `server.forward-headers-strategy=native`，只信本机转发）。nginx 配置里那几行
+  `proxy_set_header` 别删。
+- **上线这版之前**先确认生产库里 `keshi` 已经设过密码：
+
+      docker exec kotoba-db psql -U kotoba -d kotoba -c \
+        "SELECT username FROM app_user WHERE password_hash = 'NOT_SET';"
+
+  有结果的话，按根目录 README「登录」一节的办法先设上密码 —— 这版去掉了"同名注册认领"。
 
 ## 排查
 

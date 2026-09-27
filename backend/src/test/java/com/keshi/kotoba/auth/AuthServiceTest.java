@@ -6,9 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
-import java.lang.reflect.Field;
-import java.time.Instant;
-import java.util.Optional;
+import java.time.Clock;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -28,15 +26,13 @@ class AuthServiceTest {
     void setUp() {
         users = mock(AppUserRepository.class);
         // 假装数据库：存什么返回什么
-        when(users.save(any(AppUser.class))).thenAnswer(call -> call.getArgument(0));
-        authService = new AuthService(users, encoder);
+        when(users.saveAndFlush(any(AppUser.class))).thenAnswer(call -> call.getArgument(0));
+        authService = new AuthService(users, encoder, Clock.systemUTC());
     }
 
     @Test
     @DisplayName("注册新用户：用户名小写存，密码只存哈希")
     void registerHashesPassword() {
-        when(users.findByUsername("keshi")).thenReturn(Optional.empty());
-
         AppUser user = authService.register("  Keshi  ", "hunter2hunter2");
 
         assertEquals("keshi", user.getUsername());
@@ -45,39 +41,29 @@ class AuthServiceTest {
     }
 
     @Test
-    @DisplayName("占位账号能被同名注册认领，还是同一行（卡片跟着留下）")
-    void registerClaimsPlaceholderAccount() {
-        AppUser placeholder = withId(1L,
-                new AppUser("keshi", AppUser.PLACEHOLDER_PASSWORD_HASH, Instant.now()));
-        when(users.findByUsername("keshi")).thenReturn(Optional.of(placeholder));
+    @DisplayName("没设密码的占位账号不能再靠同名注册认领 —— 否则谁先来谁拿走")
+    void registerDoesNotClaimPasswordlessAccount() {
+        when(users.existsByUsername("keshi")).thenReturn(true);
 
-        AppUser claimed = authService.register("keshi", "hunter2hunter2");
-
-        assertEquals(1L, claimed.getId());
-        assertFalse(claimed.hasPlaceholderPassword());
-        assertTrue(encoder.matches("hunter2hunter2", claimed.getPasswordHash()));
+        assertThrows(UsernameTakenException.class,
+                () -> authService.register("keshi", "hunter2hunter2"));
     }
 
     @Test
-    @DisplayName("已经有真密码的账号，同名注册直接冲突")
-    void registerRejectsTakenUsername() {
-        AppUser existing = withId(1L,
-                new AppUser("keshi", encoder.encode("hunter2hunter2"), Instant.now()));
-        when(users.findByUsername("keshi")).thenReturn(Optional.of(existing));
+    @DisplayName("GitHub 建号：从 login 推用户名，去掉非法字符，撞名加后缀，没有密码")
+    void registerWithoutPasswordPicksFreeUsername() {
+        when(users.existsByUsername("keshi_dev")).thenReturn(true);
+        when(users.existsByUsername("keshi_dev-2")).thenReturn(true);
 
-        assertThrows(UsernameTakenException.class,
-                () -> authService.register("keshi", "another-password"));
+        AppUser user = authService.registerWithoutPassword("Keshi_Dev!");
+
+        assertEquals("keshi_dev-3", user.getUsername());
+        assertFalse(user.hasPassword());
     }
 
-    /** id 由数据库生成，测试里只好反射塞一个。 */
-    private static AppUser withId(Long id, AppUser user) {
-        try {
-            Field field = AppUser.class.getDeclaredField("id");
-            field.setAccessible(true);
-            field.set(user, id);
-            return user;
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException(e);
-        }
+    @Test
+    @DisplayName("GitHub login 全是非法字符时退回 user")
+    void registerWithoutPasswordFallsBack() {
+        assertEquals("user", authService.registerWithoutPassword("..").getUsername());
     }
 }

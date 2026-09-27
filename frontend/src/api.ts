@@ -72,6 +72,29 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/**
+ * 所有请求都走这里。写请求（POST/PUT/PATCH/DELETE）要带 CSRF 令牌：
+ * 后端把它放在 XSRF-TOKEN cookie 里（JS 能读），这边抄进 X-XSRF-TOKEN 头。
+ * 别的网站能让浏览器带上 cookie，但读不到 cookie 的值，也就凑不出这个头。
+ */
+export async function apiFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  const method = (init.method ?? 'GET').toUpperCase()
+  if (method === 'GET' || method === 'HEAD') {
+    return fetch(url, init)
+  }
+  const headers = new Headers(init.headers)
+  const token = readCookie('XSRF-TOKEN')
+  if (token) {
+    headers.set('X-XSRF-TOKEN', token)
+  }
+  return fetch(url, { ...init, headers })
+}
+
+function readCookie(name: string): string | null {
+  const match = document.cookie.split('; ').find((c) => c.startsWith(`${name}=`))
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : null
+}
+
 /** 后端失败时回的是 { message }，能读到就用它，读不到才退回状态码。 */
 async function toError(res: Response, fallback: string, silent401 = false): Promise<Error> {
   let message = fallback
@@ -103,17 +126,17 @@ async function handle<T>(res: Response, silent401 = false): Promise<T> {
 
 /** deckId 不传就是全部包。 */
 export async function fetchCards(deckId?: number): Promise<Card[]> {
-  const res = await fetch(deckId ? `/api/cards?deckId=${deckId}` : '/api/cards')
+  const res = await apiFetch(deckId ? `/api/cards?deckId=${deckId}` : '/api/cards')
   return handle<Card[]>(res)
 }
 
 export async function fetchDueCards(deckId?: number): Promise<Card[]> {
-  const res = await fetch(deckId ? `/api/cards/due?deckId=${deckId}` : '/api/cards/due')
+  const res = await apiFetch(deckId ? `/api/cards/due?deckId=${deckId}` : '/api/cards/due')
   return handle<Card[]>(res)
 }
 
 export async function createCard(front: string, back: string, deckId?: number): Promise<Card> {
-  const res = await fetch(deckId ? `/api/cards?deckId=${deckId}` : '/api/cards', {
+  const res = await apiFetch(deckId ? `/api/cards?deckId=${deckId}` : '/api/cards', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ front, back }),
@@ -122,7 +145,7 @@ export async function createCard(front: string, back: string, deckId?: number): 
 }
 
 export async function updateCard(id: number, front: string, back: string): Promise<Card> {
-  const res = await fetch(`/api/cards/${id}`, {
+  const res = await apiFetch(`/api/cards/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ front, back }),
@@ -131,14 +154,14 @@ export async function updateCard(id: number, front: string, back: string): Promi
 }
 
 export async function deleteCard(id: number): Promise<void> {
-  const res = await fetch(`/api/cards/${id}`, { method: 'DELETE' })
+  const res = await apiFetch(`/api/cards/${id}`, { method: 'DELETE' })
   if (!res.ok) {
     throw await toError(res, `删除失败：${res.status}`)
   }
 }
 
 export async function reviewCard(id: number, rating: Rating): Promise<Card> {
-  const res = await fetch(`/api/cards/${id}/review`, {
+  const res = await apiFetch(`/api/cards/${id}/review`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ rating }),
@@ -147,7 +170,7 @@ export async function reviewCard(id: number, rating: Rating): Promise<Card> {
 }
 
 export async function fetchStats(): Promise<Stats> {
-  const res = await fetch('/api/stats')
+  const res = await apiFetch('/api/stats')
   return handle<Stats>(res)
 }
 
@@ -156,7 +179,7 @@ export async function importCards(
   cards: { front: string; back: string }[],
   deckName?: string,
 ): Promise<ImportResult> {
-  const res = await fetch('/api/cards/import', {
+  const res = await apiFetch('/api/cards/import', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ cards, deckName }),
@@ -167,12 +190,12 @@ export async function importCards(
 // ---- 包 ------------------------------------------------------------------
 
 export async function fetchDecks(): Promise<Deck[]> {
-  const res = await fetch('/api/decks')
+  const res = await apiFetch('/api/decks')
   return handle<Deck[]>(res)
 }
 
 export async function createDeck(name: string): Promise<Deck> {
-  const res = await fetch('/api/decks', {
+  const res = await apiFetch('/api/decks', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
@@ -181,7 +204,7 @@ export async function createDeck(name: string): Promise<Deck> {
 }
 
 export async function renameDeck(id: number, name: string): Promise<Deck> {
-  const res = await fetch(`/api/decks/${id}`, {
+  const res = await apiFetch(`/api/decks/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
@@ -191,7 +214,7 @@ export async function renameDeck(id: number, name: string): Promise<Deck> {
 
 /** 删包会连里面的卡片一起删。 */
 export async function deleteDeck(id: number): Promise<void> {
-  const res = await fetch(`/api/decks/${id}`, { method: 'DELETE' })
+  const res = await apiFetch(`/api/decks/${id}`, { method: 'DELETE' })
   if (!res.ok) {
     throw await toError(res, `删除失败：${res.status}`)
   }
@@ -250,7 +273,7 @@ export function splitSentences(text: string): string[] {
  * 没配 key 的服务端会回 503，文案由后端给。
  */
 export async function analyzeText(text: string): Promise<Analysis> {
-  const res = await fetch('/api/analyze', {
+  const res = await apiFetch('/api/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
@@ -284,12 +307,12 @@ export interface FuriganaResult {
 }
 
 export async function fetchArticles(): Promise<ArticleSummary[]> {
-  const res = await fetch('/api/articles')
+  const res = await apiFetch('/api/articles')
   return handle<ArticleSummary[]>(res)
 }
 
 export async function fetchArticle(id: number): Promise<Article> {
-  const res = await fetch(`/api/articles/${id}`)
+  const res = await apiFetch(`/api/articles/${id}`)
   return handle<Article>(res)
 }
 
@@ -298,7 +321,7 @@ export async function createArticle(
   body: string,
   sourceUrl?: string,
 ): Promise<Article> {
-  const res = await fetch('/api/articles', {
+  const res = await apiFetch('/api/articles', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title, body, sourceUrl }),
@@ -307,7 +330,7 @@ export async function createArticle(
 }
 
 export async function deleteArticle(id: number): Promise<void> {
-  const res = await fetch(`/api/articles/${id}`, { method: 'DELETE' })
+  const res = await apiFetch(`/api/articles/${id}`, { method: 'DELETE' })
   if (!res.ok) {
     throw await toError(res, `删除失败：${res.status}`)
   }
@@ -315,7 +338,7 @@ export async function deleteArticle(id: number): Promise<void> {
 
 /** 给一段日语加注音。后端会校验模型没改正文，改了就退回原文。 */
 export async function annotateFurigana(text: string): Promise<FuriganaResult> {
-  const res = await fetch('/api/furigana', {
+  const res = await apiFetch('/api/furigana', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
@@ -374,17 +397,50 @@ export interface User {
   username: string
 }
 
+/** 这台服务器上配好了哪些可选功能。没配的按钮前端就不显示。 */
+export interface AuthFeatures {
+  email: boolean
+  github: boolean
+}
+
+export interface Account {
+  username: string
+  email: string | null
+  /** false = GitHub 建的号，还没设过密码。 */
+  hasPassword: boolean
+  githubLogin: string | null
+}
+
+export interface LoginSession {
+  /** 不是真的 session id，只是它的哈希，用来点名"退出这台"。 */
+  id: string
+  createdAt: string
+  lastAccessedAt: string
+  userAgent: string | null
+  ip: string | null
+  current: boolean
+}
+
+/** GitHub 登录/绑定都是整页跳转，不是 fetch。 */
+export const GITHUB_LOGIN_URL = '/api/oauth2/authorization/github'
+export const GITHUB_LINK_URL = '/api/account/github/link'
+
 /** 问后端"我是谁"。没登录不是错误，是起始状态，所以回 null 而不是抛。 */
 export async function fetchMe(): Promise<User | null> {
-  const res = await fetch('/api/auth/me')
+  const res = await apiFetch('/api/auth/me')
   if (res.status === 401) {
     return null
   }
   return handle<User>(res)
 }
 
+export async function fetchAuthFeatures(): Promise<AuthFeatures> {
+  const res = await apiFetch('/api/auth/features')
+  return handle<AuthFeatures>(res)
+}
+
 export async function login(username: string, password: string): Promise<User> {
-  const res = await fetch('/api/auth/login', {
+  const res = await apiFetch('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
@@ -393,7 +449,7 @@ export async function login(username: string, password: string): Promise<User> {
 }
 
 export async function register(username: string, password: string): Promise<User> {
-  const res = await fetch('/api/auth/register', {
+  const res = await apiFetch('/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
@@ -402,10 +458,89 @@ export async function register(username: string, password: string): Promise<User
 }
 
 export async function logout(): Promise<void> {
-  const res = await fetch('/api/auth/logout', { method: 'POST' })
+  const res = await apiFetch('/api/auth/logout', { method: 'POST' })
   if (!res.ok) {
     throw await toError(res, `登出失败：${res.status}`, true)
   }
+}
+
+/** 成功只看状态码、不读响应体的那些接口（202 / 204）。 */
+async function expectOk(res: Response, fallback: string, silent401 = false): Promise<void> {
+  if (!res.ok) {
+    throw await toError(res, fallback, silent401)
+  }
+}
+
+function postJson(url: string, body: unknown): Promise<Response> {
+  return apiFetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  await expectOk(await postJson('/api/auth/password-reset/request', { email }), '发送失败', true)
+}
+
+export async function resetPassword(token: string, newPassword: string): Promise<void> {
+  await expectOk(
+    await postJson('/api/auth/password-reset/confirm', { token, newPassword }),
+    '重置失败',
+    true,
+  )
+}
+
+export async function verifyEmail(token: string): Promise<void> {
+  await expectOk(await postJson('/api/auth/email/verify', { token }), '验证失败', true)
+}
+
+// ---- 账号 ----------------------------------------------------------------
+
+export async function fetchAccount(): Promise<Account> {
+  return handle<Account>(await apiFetch('/api/account'))
+}
+
+/** 没有密码的账号 currentPassword 传 null。 */
+export async function changePassword(
+  currentPassword: string | null,
+  newPassword: string,
+): Promise<void> {
+  await expectOk(
+    await postJson('/api/account/password', { currentPassword, newPassword }),
+    '修改失败',
+  )
+}
+
+/** 只是发验证邮件，点了邮件里的链接才算绑上。 */
+export async function requestEmailChange(
+  email: string,
+  currentPassword: string | null,
+): Promise<void> {
+  await expectOk(await postJson('/api/account/email', { email, currentPassword }), '发送失败')
+}
+
+export async function removeEmail(): Promise<void> {
+  await expectOk(await apiFetch('/api/account/email', { method: 'DELETE' }), '解绑失败')
+}
+
+export async function unlinkGithub(): Promise<void> {
+  await expectOk(await apiFetch('/api/account/github', { method: 'DELETE' }), '解绑失败')
+}
+
+export async function fetchSessions(): Promise<LoginSession[]> {
+  return handle<LoginSession[]>(await apiFetch('/api/account/sessions'))
+}
+
+export async function revokeSession(id: string): Promise<void> {
+  await expectOk(
+    await apiFetch(`/api/account/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    '操作失败',
+  )
+}
+
+export async function revokeOtherSessions(): Promise<void> {
+  await expectOk(await postJson('/api/account/sessions/revoke-others', {}), '操作失败')
 }
 
 /** 把粘贴的文本解析成卡片数组。支持 Tab 或逗号分隔，一行一张。 */

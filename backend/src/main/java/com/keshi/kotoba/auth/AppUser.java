@@ -14,10 +14,11 @@ import java.time.Instant;
 public class AppUser {
 
     /**
-     * V2 迁移给 keshi 插的占位密码。不是合法的 bcrypt 串，所以任何密码都匹配不上；
-     * 用同名走一次注册即可"认领"这个账号（见 {@link AuthService#register}）。
+     * "这个账号没有密码"。不是合法的 bcrypt 串，所以任何密码都匹配不上。
+     * 两种来源：V2 迁移给 keshi 插的占位行，以及用 GitHub 登录自动建的账号。
+     * 这种账号要么走第三方登录，要么在账号页里先设一个密码。
      */
-    public static final String PLACEHOLDER_PASSWORD_HASH = "NOT_SET";
+    public static final String NO_PASSWORD = "NOT_SET";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -28,6 +29,10 @@ public class AppUser {
 
     @Column(nullable = false)
     private String passwordHash;
+
+    /** 验证过的邮箱，小写。没绑就是 null。 */
+    @Column(unique = true)
+    private String email;
 
     @Column(nullable = false)
     private Instant createdAt;
@@ -41,13 +46,17 @@ public class AppUser {
         this.createdAt = createdAt;
     }
 
-    public boolean hasPlaceholderPassword() {
-        return PLACEHOLDER_PASSWORD_HASH.equals(passwordHash);
+    public boolean hasPassword() {
+        return !NO_PASSWORD.equals(passwordHash);
     }
 
-    /** 认领占位账号时把 NOT_SET 换成真哈希。传进来的必须已经是 encode 过的。 */
+    /** 传进来的必须已经是 encode 过的。 */
     void assignPassword(String passwordHash) {
         this.passwordHash = passwordHash;
+    }
+
+    void assignEmail(String email) {
+        this.email = email;
     }
 
     public Long getId() {
@@ -60,6 +69,10 @@ public class AppUser {
 
     public String getPasswordHash() {
         return passwordHash;
+    }
+
+    public String getEmail() {
+        return email;
     }
 
     public Instant getCreatedAt() {

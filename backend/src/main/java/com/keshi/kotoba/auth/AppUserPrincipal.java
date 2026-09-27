@@ -9,11 +9,18 @@ import java.util.List;
 /**
  * 登录后放进 session 的身份。除了 Spring Security 要的用户名/密码哈希，
  * 多带一个 id —— 业务层认的是 id，不是用户名（用户名以后可能允许改）。
+ *
+ * 密码哈希只在比对密码的那一刻需要；真正存进会话的是 {@link #forSession}，
+ * 不带哈希 —— 会话现在落在 spring_session 表里，别让哈希多一份拷贝。
  */
 public record AppUserPrincipal(Long id, String username, String passwordHash) implements UserDetails {
 
     public static AppUserPrincipal of(AppUser user) {
         return new AppUserPrincipal(user.getId(), user.getUsername(), user.getPasswordHash());
+    }
+
+    public static AppUserPrincipal forSession(Long id, String username) {
+        return new AppUserPrincipal(id, username, null);
     }
 
     /** 目前没有角色概念，谁登录进来权限都一样。 */
