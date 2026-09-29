@@ -232,13 +232,13 @@ export interface Goal {
 
 /** 还没立目标时后端回 204，这里给 null。 */
 export async function fetchGoal(): Promise<Goal | null> {
-  const res = await fetch('/api/goal')
+  const res = await apiFetch('/api/goal')
   if (res.status === 204) return null
   return handle<Goal>(res)
 }
 
 export async function saveGoal(title: string, targetDate: string): Promise<Goal> {
-  const res = await fetch('/api/goal', {
+  const res = await apiFetch('/api/goal', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title, targetDate }),
@@ -247,10 +247,30 @@ export async function saveGoal(title: string, targetDate: string): Promise<Goal>
 }
 
 export async function clearGoal(): Promise<void> {
-  const res = await fetch('/api/goal', { method: 'DELETE' })
+  const res = await apiFetch('/api/goal', { method: 'DELETE' })
   if (!res.ok) {
     throw await toError(res, `清除失败：${res.status}`)
   }
+}
+
+/** 某一天做了什么。日期按传过去的时区算。 */
+export interface DailyActivity {
+  /** 形如 2026-09-23 */
+  date: string
+  /** 复习了几次 */
+  reviews: number
+  /** 其中头一回复习的卡（新学） */
+  learned: number
+  /** 读了几篇文章（按存进来的时间算） */
+  articles: number
+}
+
+/** from、to 都含，形如 2026-09-23。什么都没做的日子不在列表里。 */
+export async function fetchActivity(from: string, to: string): Promise<DailyActivity[]> {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const query = new URLSearchParams({ from, to, tz })
+  const res = await apiFetch(`/api/activity?${query}`)
+  return handle<DailyActivity[]>(res)
 }
 
 /**
