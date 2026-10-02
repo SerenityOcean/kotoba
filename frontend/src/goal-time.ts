@@ -8,7 +8,7 @@ import type { Goal } from './api'
 const DAY_MS = 24 * 60 * 60 * 1000
 
 /** 本地零点。比较日期只用它，避免钟点掺进来。 */
-function startOfDay(date: Date): Date {
+export function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate())
 }
 
@@ -24,9 +24,19 @@ export function formatLocalDate(date: Date): string {
   return `${date.getFullYear()}-${m}-${d}`
 }
 
+/** 往后（负数往前）挪几天，结果还是本地零点。 */
+export function addDays(date: Date, days: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days)
+}
+
 /** 两个日期隔了几天。四舍五入是为了吃掉夏令时那一小时的偏差。 */
-function daysBetween(from: Date, to: Date): number {
+export function daysBetween(from: Date, to: Date): number {
   return Math.round((startOfDay(to).getTime() - startOfDay(from).getTime()) / DAY_MS)
+}
+
+/** 立目标那天，本地日期。 */
+export function startDate(goal: Goal): Date {
+  return startOfDay(new Date(goal.startedAt))
 }
 
 export interface Countdown {
@@ -55,9 +65,30 @@ export interface WeekGrid {
  */
 export function weekGrid(goal: Goal, now = new Date()): WeekGrid {
   const target = parseLocalDate(goal.targetDate)
-  const span = daysBetween(new Date(goal.startedAt), target)
+  const span = daysBetween(startDate(goal), target)
   const { weeks } = countdown(goal, now)
   // 改过日期后起点可能比「现在往后数」还晚，总格数至少要装得下剩下的
   const total = Math.max(1, Math.ceil(span / 7), weeks)
   return { total, passed: total - weeks }
+}
+
+/** 日格子最多排几行。再多就退回周格子 —— 半年以上的目标，一天一格太长了。 */
+export const MAX_DAY_ROWS = 26
+
+export interface DayGrid {
+  /** 第一行的第一天。可能早于立目标那天，那几格留空 */
+  first: Date
+  rows: number
+}
+
+/**
+ * 日格子一行 7 天，最后一行以目标日收尾 —— 和周格子同一种对齐，一行就是周格子里的一格。
+ * 所以列头不一定是周一到周日，而是从目标日的下一个星期几排起
+ * （考试多在周日，那就正好是周一到周日）。
+ */
+export function dayGrid(goal: Goal): DayGrid {
+  const target = parseLocalDate(goal.targetDate)
+  const days = daysBetween(startDate(goal), target) + 1
+  const rows = Math.max(1, Math.ceil(days / 7))
+  return { first: addDays(target, 1 - rows * 7), rows }
 }
