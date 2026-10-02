@@ -1,0 +1,850 @@
+/*
+ * self 的样子，和 Kotoba 刻意分开：Kotoba 是冷的和纸白、明朝体、藍；
+ * 这里是暖的、亮的，颜色跟着节气走（--accent 由页面按今天的节气给）。
+ * 只在 /self 下加载，类名都带 self- 前缀，不会漏到 Kotoba 那边。
+ */
+
+.self-root {
+  --bg1: #f7f1ea;
+  --bg2: #efe5da;
+  --ink: #3a332d;
+  --soft: #8d8277;
+  --faint: #c3b8ac;
+  --card: rgba(255, 252, 248, 0.66);
+  --danger: #b4472e;
+  --song: 'Songti SC', 'Noto Serif SC', 'Source Han Serif SC', 'STSong', serif;
+  --sans: 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', system-ui, sans-serif;
+
+  position: relative;
+  min-height: 100vh;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-weight: 300;
+  background: linear-gradient(180deg, var(--bg1), var(--bg2) 120vh) fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- 天：极光 ---------------------------------------------------------- */
+
+.self-sky {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/*
+ * 每条色带是一个压扁、转了角度的椭圆渐变，边缘本身就是虚的，不用 filter: blur
+ * （大面积 blur 一动起来很吃显卡）。动画只动 transform，交给合成层。
+ */
+.self-aurora {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--band), transparent);
+  opacity: 0.85;
+  will-change: transform;
+  animation: self-sway var(--period) ease-in-out infinite alternate;
+}
+
+.self-aurora.is-term {
+  --band: color-mix(in srgb, var(--term) 70%, transparent);
+  --period: 26s;
+  top: -12vh;
+  left: 22vw;
+  width: 100vw;
+  height: 36vh;
+  rotate: -14deg;
+}
+
+.self-aurora.is-mint {
+  --band: rgba(104, 208, 168, 0.8);
+  --period: 34s;
+  top: -4vh;
+  left: -24vw;
+  width: 95vw;
+  height: 30vh;
+  rotate: 16deg;
+  animation-delay: -8s;
+}
+
+.self-aurora.is-violet {
+  --band: rgba(156, 128, 234, 0.72);
+  --period: 40s;
+  top: 18vh;
+  right: -26vw;
+  width: 90vw;
+  height: 34vh;
+  rotate: -30deg;
+  animation-delay: -15s;
+}
+
+.self-aurora.is-blue {
+  --band: rgba(98, 172, 224, 0.62);
+  --period: 46s;
+  top: 52vh;
+  left: -20vw;
+  width: 110vw;
+  height: 30vh;
+  rotate: 10deg;
+  animation-delay: -22s;
+}
+
+.self-aurora.is-rose {
+  --band: rgba(240, 150, 182, 0.58);
+  --period: 38s;
+  bottom: -12vh;
+  right: -10vw;
+  width: 80vw;
+  height: 34vh;
+  rotate: -12deg;
+  animation-delay: -4s;
+}
+
+@keyframes self-sway {
+  0% {
+    transform: translate(0, 0) scale(1, 1);
+  }
+  50% {
+    transform: translate(6vw, 4vh) scale(1.15, 0.85);
+  }
+  100% {
+    transform: translate(-5vw, -3vh) scale(0.9, 1.2);
+  }
+}
+
+/* 一层很淡的颗粒，渐变大面积铺开时不会显得像塑料 */
+.self-grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ---- 骨架 -------------------------------------------------------------- */
+
+.self-wrap {
+  position: relative;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 28px 120px;
+}
+
+.self-nav {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 28px 0;
+  font-size: 13px;
+  color: var(--soft);
+  letter-spacing: 0.2em;
+}
+
+.self-mark {
+  font-family: var(--song);
+  font-size: 15px;
+  color: var(--ink);
+  letter-spacing: 0.1em;
+}
+
+.self-nav-right {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+}
+
+.self-nav-link {
+  color: var(--accent);
+  transition: opacity 0.2s;
+}
+
+.self-nav-link:hover {
+  opacity: 0.7;
+}
+
+/* ---- 节气 -------------------------------------------------------------- */
+
+.self-hero {
+  padding: 9vh 0 11vh;
+}
+
+.self-hero-small {
+  padding: 6vh 0 5vh;
+}
+
+.self-term,
+.self-today {
+  margin: 0;
+  font-family: var(--song);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--accent) 72%, #3a2418),
+    var(--accent) 60%,
+    color-mix(in srgb, var(--accent) 55%, #e6cfa8)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.self-term {
+  font-size: clamp(88px, 15vw, 168px);
+}
+
+.self-today {
+  font-size: clamp(44px, 7vw, 64px);
+}
+
+.self-hero-line {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 26px;
+  font-size: 14px;
+  color: var(--soft);
+  letter-spacing: 0.25em;
+}
+
+.self-hero-line::before {
+  content: '';
+  flex: none;
+  width: 40px;
+  height: 1px;
+  background: var(--faint);
+}
+
+.self-hero-small .self-hero-line {
+  margin-top: 18px;
+}
+
+.self-pentads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 28px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--song);
+  font-size: 18px;
+  letter-spacing: 0.15em;
+  color: var(--faint);
+}
+
+.self-pentads li.is-now {
+  color: var(--ink);
+}
+
+.self-pentads li.is-now::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 8px;
+  border-radius: 50%;
+  vertical-align: 0.3em;
+  background: var(--accent);
+}
+
+/* ---- 卡片墙 ------------------------------------------------------------ */
+
+.self-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  align-items: start;
+  gap: 24px;
+}
+
+.self-sep {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin: 24px 0 2px;
+  color: var(--soft);
+}
+
+.self-sep:first-child {
+  margin-top: 0;
+}
+
+.self-sep b {
+  font-family: var(--song);
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--ink);
+  letter-spacing: 0.2em;
+}
+
+.self-sep small {
+  font-size: 14px;
+  color: var(--soft);
+  letter-spacing: 0.1em;
+}
+
+.self-sep span {
+  font-size: 12px;
+  letter-spacing: 0.25em;
+}
+
+.self-card {
+  padding: 26px 26px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 20px;
+  background: var(--card);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow:
+    0 1px 2px rgba(90, 60, 30, 0.04),
+    0 20px 40px -24px rgba(120, 80, 40, 0.25);
+  transition:
+    transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.5s;
+}
+
+.self-card:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 1px 2px rgba(90, 60, 30, 0.04),
+    0 30px 50px -24px rgba(120, 80, 40, 0.3);
+}
+
+.self-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.self-card-date {
+  font-family: var(--song);
+  font-size: 30px;
+  letter-spacing: 0.02em;
+}
+
+.self-card-date small {
+  margin-left: 8px;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--soft);
+  letter-spacing: 0.15em;
+}
+
+.self-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--c);
+  letter-spacing: 0.2em;
+}
+
+.self-tag::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--c);
+}
+
+/* 展示页：日期单独一行，横跨整排 */
+.self-day {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  margin: 12px 0 -6px;
+}
+
+.self-sep + .self-day {
+  margin-top: 0;
+}
+
+.self-day .self-card-date {
+  font-size: 24px;
+}
+
+/* 展示页一条一张：比写作页里整天的卡片小一号 */
+.self-note {
+  padding: 22px 24px 16px;
+}
+
+.self-note p {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.95;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+
+.self-note p + p {
+  margin-top: 0.75em;
+}
+
+.self-note .self-time {
+  margin-top: 10px;
+  text-align: right;
+}
+
+/* 出处行：靠右、小一号，展示页和写作页都用 */
+.self-root .self-attribution {
+  font-size: 13px;
+  color: var(--soft);
+  text-align: right;
+}
+
+/* 同一天的几条之间，一道很淡的线 */
+.self-entry + .self-entry {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px dashed color-mix(in srgb, var(--faint) 60%, transparent);
+}
+
+.self-entry p {
+  margin: 0 0 0.8em;
+  font-size: 15.5px;
+  line-height: 2;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+
+.self-entry p:last-of-type {
+  margin-bottom: 0;
+}
+
+.self-time {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--faint);
+  letter-spacing: 0.15em;
+}
+
+.self-quiet {
+  padding: 4vh 0;
+  font-family: var(--song);
+  font-size: 17px;
+  color: var(--soft);
+  letter-spacing: 0.15em;
+}
+
+.self-inline-link {
+  margin-left: 12px;
+  color: var(--accent);
+}
+
+.self-more {
+  margin-top: 40px;
+  text-align: center;
+}
+
+.self-more button {
+  padding: 10px 28px;
+  border: 1px solid var(--faint);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--soft);
+  letter-spacing: 0.3em;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+
+.self-more button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.self-footer {
+  margin-top: 64px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--soft);
+  letter-spacing: 0.3em;
+}
+
+/* ---- 展示页：左边固定栏 + 右边瀑布流 ------------------------------------- */
+
+.self-wide {
+  max-width: 1240px;
+}
+
+.self-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  align-items: start;
+  gap: 0 72px;
+}
+
+/* 左栏是「此刻」，往下滚时停在原地；内容比屏幕高时自己滚 */
+.self-aside {
+  position: sticky;
+  top: 32px;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding-bottom: 24px;
+}
+
+.self-aside .self-hero {
+  padding: 4vh 0 0;
+}
+
+.self-aside .self-term {
+  font-size: clamp(80px, 8vw, 116px);
+}
+
+.self-aside .self-hero-line {
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.self-hero-line span + span::before {
+  content: '·';
+  margin-right: 14px;
+}
+
+.self-aside .self-pentads {
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 28px;
+}
+
+.self-pentads small {
+  margin-right: 14px;
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--faint);
+  letter-spacing: 0.2em;
+}
+
+.self-pentads li.is-now small {
+  color: var(--accent);
+}
+
+.self-index {
+  display: flex;
+  flex-direction: column;
+  margin-top: 48px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--faint) 50%, transparent);
+}
+
+.self-index a {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 7px 0;
+  font-family: var(--song);
+  font-size: 15px;
+  color: var(--soft);
+  letter-spacing: 0.2em;
+  transition: color 0.2s;
+}
+
+.self-index a:hover,
+.self-index a.is-now {
+  color: var(--ink);
+}
+
+.self-index a.is-now span::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 1px;
+  margin-right: 10px;
+  vertical-align: middle;
+  background: var(--accent);
+}
+
+.self-index b {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 300;
+  color: var(--faint);
+  letter-spacing: 0.1em;
+}
+
+.self-total {
+  margin-top: 20px;
+  font-size: 12px;
+  color: var(--soft);
+  letter-spacing: 0.3em;
+}
+
+.self-main {
+  min-width: 0;
+  padding-top: 4vh;
+}
+
+/* 瀑布流：行切成 4px，每格占几行由 masonry.ts 按实际高度算。
+   格子只能用 margin-bottom 和 padding 留白 —— margin-top 不在量的高度里，会压到下一张 */
+.self-masonry {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-auto-rows: 4px;
+  column-gap: 20px;
+}
+
+.self-masonry > * {
+  align-self: start;
+  margin: 0 0 20px;
+}
+
+.self-masonry .self-sep {
+  grid-column: 1 / -1;
+  margin: 0 0 12px;
+  padding-top: 24px;
+  scroll-margin-top: 24px;
+}
+
+.self-masonry .self-sep:first-child {
+  padding-top: 0;
+}
+
+.self-masonry .self-day {
+  margin: 0 0 14px;
+  padding-top: 4px;
+}
+
+/* ---- 写 ---------------------------------------------------------------- */
+
+.self-composer {
+  margin-bottom: 56px;
+  padding: 22px 26px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 22px;
+  background: rgba(255, 252, 248, 0.78);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: 0 24px 48px -28px rgba(120, 80, 40, 0.3);
+  transition: box-shadow 0.4s;
+}
+
+.self-composer:focus-within {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent),
+    0 24px 48px -28px rgba(120, 80, 40, 0.35);
+}
+
+.self-composer textarea,
+.self-edit {
+  display: block;
+  width: 100%;
+  border: 0;
+  outline: none;
+  resize: vertical;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--song);
+  letter-spacing: 0.04em;
+  field-sizing: content;
+}
+
+.self-composer textarea {
+  min-height: 168px;
+  font-size: 18px;
+  line-height: 2;
+}
+
+.self-composer textarea::placeholder {
+  color: var(--faint);
+}
+
+.self-composer-foot,
+.self-entry-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--soft);
+  letter-spacing: 0.15em;
+}
+
+.self-composer-foot {
+  margin-top: 8px;
+}
+
+.self-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.self-composer-actions kbd {
+  font-family: var(--sans);
+  color: var(--faint);
+}
+
+/* 手机上没有 ⌘ 键，提示也就不用了 */
+@media (hover: none) {
+  .self-composer-actions kbd {
+    display: none;
+  }
+}
+
+.self-button {
+  padding: 8px 22px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fffaf4;
+  font-size: 14px;
+  letter-spacing: 0.3em;
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
+}
+
+.self-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.self-button:disabled {
+  opacity: 0.4;
+}
+
+.is-error {
+  color: var(--danger);
+}
+
+.self-edit {
+  min-height: 120px;
+  padding: 10px 12px;
+  margin: -10px -12px 0;
+  width: calc(100% + 24px);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  font-size: 15.5px;
+  line-height: 2;
+}
+
+.self-entry-foot {
+  flex-wrap: wrap;
+  row-gap: 6px;
+  margin-top: 12px;
+  color: var(--faint);
+}
+
+/* 卡片窄，确认删除那一行放不下时整块换行，别一个字一个字地折 */
+.self-entry-foot > span,
+.self-entry-actions > * {
+  white-space: nowrap;
+}
+
+.self-entry-foot .self-entry-actions {
+  margin-left: auto;
+}
+
+.self-entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--soft);
+}
+
+.self-entry-actions button {
+  letter-spacing: 0.15em;
+  transition: color 0.2s;
+}
+
+.self-entry-actions button:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.self-entry-actions .is-strong {
+  color: var(--accent);
+}
+
+.self-entry-actions .is-danger {
+  color: var(--danger);
+}
+
+/* 编辑、删除平时藏着，指到这张卡片上再出来；触屏没有悬停，一直显示 */
+@media (hover: hover) {
+  .self-entry-actions.is-quiet {
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+
+  .self-entry:hover .self-entry-actions.is-quiet,
+  .self-entry-actions.is-quiet:focus-within {
+    opacity: 1;
+  }
+}
+
+/* ---- 小屏 -------------------------------------------------------------- */
+
+/* 窄屏：左栏回到顶部，月份目录收起来 */
+@media (max-width: 900px) {
+  .self-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .self-aside {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .self-aside .self-pentads {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px 22px;
+  }
+
+  .self-pentads small,
+  .self-index {
+    display: none;
+  }
+
+  .self-main {
+    padding-top: 6vh;
+  }
+}
+
+@media (max-width: 640px) {
+  .self-wrap {
+    padding: 0 18px 80px;
+  }
+
+  .self-nav-right {
+    gap: 16px;
+  }
+
+  .self-hero {
+    padding: 6vh 0 7vh;
+  }
+
+  .self-hero-line {
+    gap: 12px;
+    letter-spacing: 0.15em;
+  }
+
+  .self-hero-line::before {
+    width: 24px;
+  }
+
+  .self-pentads {
+    font-size: 16px;
+    gap: 4px 18px;
+  }
+
+  .self-card,
+  .self-composer {
+    padding: 22px 20px 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .self-aurora {
+    animation: none;
+  }
+
+  .self-card,
+  .self-card:hover {
+    transition: none;
+    transform: none;
+  }
+}
