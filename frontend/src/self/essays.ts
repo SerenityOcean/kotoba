@@ -18,10 +18,15 @@ export interface Month {
   count: number
 }
 
+/** 月份分隔的 id，展示页左栏的月份目录按它跳过去。 */
+export const monthAnchor = (month: Month) => `self-${month.key}`
+
 /** 进来的是从新到旧的列表；月、日都保持从新到旧，同一天里的几条从早到晚。 */
 export function groupByMonth(essays: Essay[]): Month[] {
   const months: Month[] = []
-  for (const essay of essays) {
+  // 接口按 id 翻页，正常写的时候 id 和落笔时刻同序；这里再按时刻排一遍，万一有补录的也不会乱
+  const newestFirst = [...essays].sort((a, b) => Date.parse(b.writtenAt) - Date.parse(a.writtenAt))
+  for (const essay of newestFirst) {
     const at = new Date(essay.writtenAt)
     const date = startOfDay(at)
     const monthKey = `${date.getFullYear()}-${date.getMonth()}`
@@ -40,6 +45,23 @@ export function groupByMonth(essays: Essay[]): Month[] {
     month.count++
   }
   return months
+}
+
+/** 出处行：——《美国往事》、-- 某某。排在随笔末尾，靠右、小一号。 */
+const ATTRIBUTION = /^(——|--|—|－－)/
+
+export interface Paragraph {
+  text: string
+  attribution: boolean
+}
+
+/** 按换行分段，和写的时候一样。存的时候连续空行已经并掉了，这里只需要丢掉空行。 */
+export function paragraphs(body: string): Paragraph[] {
+  return body
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+    .map((text) => ({ text, attribution: ATTRIBUTION.test(text) }))
 }
 
 /** 字数：空白不算，标点算。展示页和写的时候用同一个数法。 */

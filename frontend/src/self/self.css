@@ -24,7 +24,7 @@
   -webkit-font-smoothing: antialiased;
 }
 
-/* ---- 天：太阳和雾 ------------------------------------------------------ */
+/* ---- 天：极光 ---------------------------------------------------------- */
 
 .self-sky {
   position: fixed;
@@ -33,46 +33,91 @@
   pointer-events: none;
 }
 
-.self-sun {
+/*
+ * 每条色带是一个压扁、转了角度的椭圆渐变，边缘本身就是虚的，不用 filter: blur
+ * （大面积 blur 一动起来很吃显卡）。动画只动 transform，交给合成层。
+ */
+.self-aurora {
   position: absolute;
-  top: -16vmax;
-  right: -10vmax;
-  width: 46vmax;
-  height: 46vmax;
   border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    color-mix(in srgb, var(--sun) 55%, transparent),
-    color-mix(in srgb, var(--sun) 18%, transparent) 45%,
-    transparent 70%
-  );
-  filter: blur(10px);
-  animation: self-breathe 14s ease-in-out infinite;
+  background: radial-gradient(closest-side, var(--band), transparent);
+  opacity: 0.85;
+  will-change: transform;
+  animation: self-sway var(--period) ease-in-out infinite alternate;
 }
 
-.self-mist {
-  position: absolute;
-  top: 40vh;
-  left: -20vmax;
-  width: 70vmax;
-  height: 30vmax;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(143, 166, 181, 0.22), transparent 70%);
-  filter: blur(30px);
-  animation: self-drift 30s ease-in-out infinite alternate;
+.self-aurora.is-term {
+  --band: color-mix(in srgb, var(--term) 70%, transparent);
+  --period: 26s;
+  top: -12vh;
+  left: 22vw;
+  width: 100vw;
+  height: 36vh;
+  rotate: -14deg;
 }
 
-@keyframes self-breathe {
+.self-aurora.is-mint {
+  --band: rgba(104, 208, 168, 0.8);
+  --period: 34s;
+  top: -4vh;
+  left: -24vw;
+  width: 95vw;
+  height: 30vh;
+  rotate: 16deg;
+  animation-delay: -8s;
+}
+
+.self-aurora.is-violet {
+  --band: rgba(156, 128, 234, 0.72);
+  --period: 40s;
+  top: 18vh;
+  right: -26vw;
+  width: 90vw;
+  height: 34vh;
+  rotate: -30deg;
+  animation-delay: -15s;
+}
+
+.self-aurora.is-blue {
+  --band: rgba(98, 172, 224, 0.62);
+  --period: 46s;
+  top: 52vh;
+  left: -20vw;
+  width: 110vw;
+  height: 30vh;
+  rotate: 10deg;
+  animation-delay: -22s;
+}
+
+.self-aurora.is-rose {
+  --band: rgba(240, 150, 182, 0.58);
+  --period: 38s;
+  bottom: -12vh;
+  right: -10vw;
+  width: 80vw;
+  height: 34vh;
+  rotate: -12deg;
+  animation-delay: -4s;
+}
+
+@keyframes self-sway {
+  0% {
+    transform: translate(0, 0) scale(1, 1);
+  }
   50% {
-    transform: scale(1.06);
-    opacity: 0.85;
+    transform: translate(6vw, 4vh) scale(1.15, 0.85);
+  }
+  100% {
+    transform: translate(-5vw, -3vh) scale(0.9, 1.2);
   }
 }
 
-@keyframes self-drift {
-  to {
-    transform: translateX(14vmax);
-  }
+/* 一层很淡的颗粒，渐变大面积铺开时不会显得像塑料 */
+.self-grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.06;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* ---- 骨架 -------------------------------------------------------------- */
@@ -304,6 +349,52 @@
   background: var(--c);
 }
 
+/* 展示页：日期单独一行，横跨整排 */
+.self-day {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  margin: 12px 0 -6px;
+}
+
+.self-sep + .self-day {
+  margin-top: 0;
+}
+
+.self-day .self-card-date {
+  font-size: 24px;
+}
+
+/* 展示页一条一张：比写作页里整天的卡片小一号 */
+.self-note {
+  padding: 22px 24px 16px;
+}
+
+.self-note p {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.95;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+
+.self-note p + p {
+  margin-top: 0.75em;
+}
+
+.self-note .self-time {
+  margin-top: 10px;
+  text-align: right;
+}
+
+/* 出处行：靠右、小一号，展示页和写作页都用 */
+.self-root .self-attribution {
+  font-size: 13px;
+  color: var(--soft);
+  text-align: right;
+}
+
 /* 同一天的几条之间，一道很淡的线 */
 .self-entry + .self-entry {
   margin-top: 18px;
@@ -371,6 +462,150 @@
   font-size: 13px;
   color: var(--soft);
   letter-spacing: 0.3em;
+}
+
+/* ---- 展示页：左边固定栏 + 右边瀑布流 ------------------------------------- */
+
+.self-wide {
+  max-width: 1240px;
+}
+
+.self-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  align-items: start;
+  gap: 0 72px;
+}
+
+/* 左栏是「此刻」，往下滚时停在原地；内容比屏幕高时自己滚 */
+.self-aside {
+  position: sticky;
+  top: 32px;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding-bottom: 24px;
+}
+
+.self-aside .self-hero {
+  padding: 4vh 0 0;
+}
+
+.self-aside .self-term {
+  font-size: clamp(80px, 8vw, 116px);
+}
+
+.self-aside .self-hero-line {
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.self-hero-line span + span::before {
+  content: '·';
+  margin-right: 14px;
+}
+
+.self-aside .self-pentads {
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 28px;
+}
+
+.self-pentads small {
+  margin-right: 14px;
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--faint);
+  letter-spacing: 0.2em;
+}
+
+.self-pentads li.is-now small {
+  color: var(--accent);
+}
+
+.self-index {
+  display: flex;
+  flex-direction: column;
+  margin-top: 48px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--faint) 50%, transparent);
+}
+
+.self-index a {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 7px 0;
+  font-family: var(--song);
+  font-size: 15px;
+  color: var(--soft);
+  letter-spacing: 0.2em;
+  transition: color 0.2s;
+}
+
+.self-index a:hover,
+.self-index a.is-now {
+  color: var(--ink);
+}
+
+.self-index a.is-now span::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 1px;
+  margin-right: 10px;
+  vertical-align: middle;
+  background: var(--accent);
+}
+
+.self-index b {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 300;
+  color: var(--faint);
+  letter-spacing: 0.1em;
+}
+
+.self-total {
+  margin-top: 20px;
+  font-size: 12px;
+  color: var(--soft);
+  letter-spacing: 0.3em;
+}
+
+.self-main {
+  min-width: 0;
+  padding-top: 4vh;
+}
+
+/* 瀑布流：行切成 4px，每格占几行由 masonry.ts 按实际高度算。
+   格子只能用 margin-bottom 和 padding 留白 —— margin-top 不在量的高度里，会压到下一张 */
+.self-masonry {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  grid-auto-rows: 4px;
+  column-gap: 20px;
+}
+
+.self-masonry > * {
+  align-self: start;
+  margin: 0 0 20px;
+}
+
+.self-masonry .self-sep {
+  grid-column: 1 / -1;
+  margin: 0 0 12px;
+  padding-top: 24px;
+  scroll-margin-top: 24px;
+}
+
+.self-masonry .self-sep:first-child {
+  padding-top: 0;
+}
+
+.self-masonry .self-day {
+  margin: 0 0 14px;
+  padding-top: 4px;
 }
 
 /* ---- 写 ---------------------------------------------------------------- */
@@ -541,6 +776,34 @@
 
 /* ---- 小屏 -------------------------------------------------------------- */
 
+/* 窄屏：左栏回到顶部，月份目录收起来 */
+@media (max-width: 900px) {
+  .self-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .self-aside {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .self-aside .self-pentads {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px 22px;
+  }
+
+  .self-pentads small,
+  .self-index {
+    display: none;
+  }
+
+  .self-main {
+    padding-top: 6vh;
+  }
+}
+
 @media (max-width: 640px) {
   .self-wrap {
     padding: 0 18px 80px;
@@ -575,8 +838,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .self-sun,
-  .self-mist {
+  .self-aurora {
     animation: none;
   }
 
