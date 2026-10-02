@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import HomePage from './pages/HomePage'
 import ReviewPage from './pages/ReviewPage'
@@ -18,7 +19,27 @@ import { countdown } from './goal-time'
 /** 没登录时用的那几页：只有一块表单，收窄居中。 */
 const SIGNED_OUT_PAGES = ['/login', '/forgot-password', '/reset-password', '/verify-email']
 
+/** self 是另一个地方，按需加载，Kotoba 的包里不带它。 */
+const SelfApp = lazy(() => import('./self/SelfApp'))
+
 export default function App() {
+  return (
+    <Routes>
+      {/* self 不要 Kotoba 的页头和导航，也不用等登录态 —— 谁都能看 */}
+      <Route
+        path="/self/*"
+        element={
+          <Suspense fallback={null}>
+            <SelfApp />
+          </Suspense>
+        }
+      />
+      <Route path="*" element={<Kotoba />} />
+    </Routes>
+  )
+}
+
+function Kotoba() {
   const { user, ready } = useAuth()
   const location = useLocation()
 

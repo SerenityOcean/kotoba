@@ -45,6 +45,8 @@ public class SecurityConfig {
                                 "/api/auth/password-reset/**",
                                 "/api/auth/email/verify").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/features").permitAll()
+                        // self 的随笔谁都能读；写还是要登录，是不是主人由 EssayController 再认
+                        .requestMatchers(HttpMethod.GET, "/api/self/essays").permitAll()
                         .requestMatchers(GithubOAuthConfig.AUTHORIZATION_BASE_URI + "/**",
                                 GithubOAuthConfig.CALLBACK_BASE_URI + "/**").permitAll()
                         .requestMatchers("/api/**").authenticated()

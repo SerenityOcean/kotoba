@@ -1,0 +1,588 @@
+/*
+ * self 的样子，和 Kotoba 刻意分开：Kotoba 是冷的和纸白、明朝体、藍；
+ * 这里是暖的、亮的，颜色跟着节气走（--accent 由页面按今天的节气给）。
+ * 只在 /self 下加载，类名都带 self- 前缀，不会漏到 Kotoba 那边。
+ */
+
+.self-root {
+  --bg1: #f7f1ea;
+  --bg2: #efe5da;
+  --ink: #3a332d;
+  --soft: #8d8277;
+  --faint: #c3b8ac;
+  --card: rgba(255, 252, 248, 0.66);
+  --danger: #b4472e;
+  --song: 'Songti SC', 'Noto Serif SC', 'Source Han Serif SC', 'STSong', serif;
+  --sans: 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC', system-ui, sans-serif;
+
+  position: relative;
+  min-height: 100vh;
+  color: var(--ink);
+  font-family: var(--sans);
+  font-weight: 300;
+  background: linear-gradient(180deg, var(--bg1), var(--bg2) 120vh) fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- 天：太阳和雾 ------------------------------------------------------ */
+
+.self-sky {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.self-sun {
+  position: absolute;
+  top: -16vmax;
+  right: -10vmax;
+  width: 46vmax;
+  height: 46vmax;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--sun) 55%, transparent),
+    color-mix(in srgb, var(--sun) 18%, transparent) 45%,
+    transparent 70%
+  );
+  filter: blur(10px);
+  animation: self-breathe 14s ease-in-out infinite;
+}
+
+.self-mist {
+  position: absolute;
+  top: 40vh;
+  left: -20vmax;
+  width: 70vmax;
+  height: 30vmax;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(143, 166, 181, 0.22), transparent 70%);
+  filter: blur(30px);
+  animation: self-drift 30s ease-in-out infinite alternate;
+}
+
+@keyframes self-breathe {
+  50% {
+    transform: scale(1.06);
+    opacity: 0.85;
+  }
+}
+
+@keyframes self-drift {
+  to {
+    transform: translateX(14vmax);
+  }
+}
+
+/* ---- 骨架 -------------------------------------------------------------- */
+
+.self-wrap {
+  position: relative;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 28px 120px;
+}
+
+.self-nav {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 28px 0;
+  font-size: 13px;
+  color: var(--soft);
+  letter-spacing: 0.2em;
+}
+
+.self-mark {
+  font-family: var(--song);
+  font-size: 15px;
+  color: var(--ink);
+  letter-spacing: 0.1em;
+}
+
+.self-nav-right {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+}
+
+.self-nav-link {
+  color: var(--accent);
+  transition: opacity 0.2s;
+}
+
+.self-nav-link:hover {
+  opacity: 0.7;
+}
+
+/* ---- 节气 -------------------------------------------------------------- */
+
+.self-hero {
+  padding: 9vh 0 11vh;
+}
+
+.self-hero-small {
+  padding: 6vh 0 5vh;
+}
+
+.self-term,
+.self-today {
+  margin: 0;
+  font-family: var(--song);
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--accent) 72%, #3a2418),
+    var(--accent) 60%,
+    color-mix(in srgb, var(--accent) 55%, #e6cfa8)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.self-term {
+  font-size: clamp(88px, 15vw, 168px);
+}
+
+.self-today {
+  font-size: clamp(44px, 7vw, 64px);
+}
+
+.self-hero-line {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 26px;
+  font-size: 14px;
+  color: var(--soft);
+  letter-spacing: 0.25em;
+}
+
+.self-hero-line::before {
+  content: '';
+  flex: none;
+  width: 40px;
+  height: 1px;
+  background: var(--faint);
+}
+
+.self-hero-small .self-hero-line {
+  margin-top: 18px;
+}
+
+.self-pentads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 28px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--song);
+  font-size: 18px;
+  letter-spacing: 0.15em;
+  color: var(--faint);
+}
+
+.self-pentads li.is-now {
+  color: var(--ink);
+}
+
+.self-pentads li.is-now::after {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 8px;
+  border-radius: 50%;
+  vertical-align: 0.3em;
+  background: var(--accent);
+}
+
+/* ---- 卡片墙 ------------------------------------------------------------ */
+
+.self-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  align-items: start;
+  gap: 24px;
+}
+
+.self-sep {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin: 24px 0 2px;
+  color: var(--soft);
+}
+
+.self-sep:first-child {
+  margin-top: 0;
+}
+
+.self-sep b {
+  font-family: var(--song);
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--ink);
+  letter-spacing: 0.2em;
+}
+
+.self-sep small {
+  font-size: 14px;
+  color: var(--soft);
+  letter-spacing: 0.1em;
+}
+
+.self-sep span {
+  font-size: 12px;
+  letter-spacing: 0.25em;
+}
+
+.self-card {
+  padding: 26px 26px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 20px;
+  background: var(--card);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow:
+    0 1px 2px rgba(90, 60, 30, 0.04),
+    0 20px 40px -24px rgba(120, 80, 40, 0.25);
+  transition:
+    transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.5s;
+}
+
+.self-card:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 1px 2px rgba(90, 60, 30, 0.04),
+    0 30px 50px -24px rgba(120, 80, 40, 0.3);
+}
+
+.self-card-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.self-card-date {
+  font-family: var(--song);
+  font-size: 30px;
+  letter-spacing: 0.02em;
+}
+
+.self-card-date small {
+  margin-left: 8px;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--soft);
+  letter-spacing: 0.15em;
+}
+
+.self-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--c);
+  letter-spacing: 0.2em;
+}
+
+.self-tag::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--c);
+}
+
+/* 同一天的几条之间，一道很淡的线 */
+.self-entry + .self-entry {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px dashed color-mix(in srgb, var(--faint) 60%, transparent);
+}
+
+.self-entry p {
+  margin: 0 0 0.8em;
+  font-size: 15.5px;
+  line-height: 2;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+}
+
+.self-entry p:last-of-type {
+  margin-bottom: 0;
+}
+
+.self-time {
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--faint);
+  letter-spacing: 0.15em;
+}
+
+.self-quiet {
+  padding: 4vh 0;
+  font-family: var(--song);
+  font-size: 17px;
+  color: var(--soft);
+  letter-spacing: 0.15em;
+}
+
+.self-inline-link {
+  margin-left: 12px;
+  color: var(--accent);
+}
+
+.self-more {
+  margin-top: 40px;
+  text-align: center;
+}
+
+.self-more button {
+  padding: 10px 28px;
+  border: 1px solid var(--faint);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--soft);
+  letter-spacing: 0.3em;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+
+.self-more button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.self-footer {
+  margin-top: 64px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--soft);
+  letter-spacing: 0.3em;
+}
+
+/* ---- 写 ---------------------------------------------------------------- */
+
+.self-composer {
+  margin-bottom: 56px;
+  padding: 22px 26px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 22px;
+  background: rgba(255, 252, 248, 0.78);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: 0 24px 48px -28px rgba(120, 80, 40, 0.3);
+  transition: box-shadow 0.4s;
+}
+
+.self-composer:focus-within {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent),
+    0 24px 48px -28px rgba(120, 80, 40, 0.35);
+}
+
+.self-composer textarea,
+.self-edit {
+  display: block;
+  width: 100%;
+  border: 0;
+  outline: none;
+  resize: vertical;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--song);
+  letter-spacing: 0.04em;
+  field-sizing: content;
+}
+
+.self-composer textarea {
+  min-height: 168px;
+  font-size: 18px;
+  line-height: 2;
+}
+
+.self-composer textarea::placeholder {
+  color: var(--faint);
+}
+
+.self-composer-foot,
+.self-entry-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: var(--soft);
+  letter-spacing: 0.15em;
+}
+
+.self-composer-foot {
+  margin-top: 8px;
+}
+
+.self-composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.self-composer-actions kbd {
+  font-family: var(--sans);
+  color: var(--faint);
+}
+
+/* 手机上没有 ⌘ 键，提示也就不用了 */
+@media (hover: none) {
+  .self-composer-actions kbd {
+    display: none;
+  }
+}
+
+.self-button {
+  padding: 8px 22px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fffaf4;
+  font-size: 14px;
+  letter-spacing: 0.3em;
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
+}
+
+.self-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.self-button:disabled {
+  opacity: 0.4;
+}
+
+.is-error {
+  color: var(--danger);
+}
+
+.self-edit {
+  min-height: 120px;
+  padding: 10px 12px;
+  margin: -10px -12px 0;
+  width: calc(100% + 24px);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  font-size: 15.5px;
+  line-height: 2;
+}
+
+.self-entry-foot {
+  flex-wrap: wrap;
+  row-gap: 6px;
+  margin-top: 12px;
+  color: var(--faint);
+}
+
+/* 卡片窄，确认删除那一行放不下时整块换行，别一个字一个字地折 */
+.self-entry-foot > span,
+.self-entry-actions > * {
+  white-space: nowrap;
+}
+
+.self-entry-foot .self-entry-actions {
+  margin-left: auto;
+}
+
+.self-entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--soft);
+}
+
+.self-entry-actions button {
+  letter-spacing: 0.15em;
+  transition: color 0.2s;
+}
+
+.self-entry-actions button:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.self-entry-actions .is-strong {
+  color: var(--accent);
+}
+
+.self-entry-actions .is-danger {
+  color: var(--danger);
+}
+
+/* 编辑、删除平时藏着，指到这张卡片上再出来；触屏没有悬停，一直显示 */
+@media (hover: hover) {
+  .self-entry-actions.is-quiet {
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+
+  .self-entry:hover .self-entry-actions.is-quiet,
+  .self-entry-actions.is-quiet:focus-within {
+    opacity: 1;
+  }
+}
+
+/* ---- 小屏 -------------------------------------------------------------- */
+
+@media (max-width: 640px) {
+  .self-wrap {
+    padding: 0 18px 80px;
+  }
+
+  .self-nav-right {
+    gap: 16px;
+  }
+
+  .self-hero {
+    padding: 6vh 0 7vh;
+  }
+
+  .self-hero-line {
+    gap: 12px;
+    letter-spacing: 0.15em;
+  }
+
+  .self-hero-line::before {
+    width: 24px;
+  }
+
+  .self-pentads {
+    font-size: 16px;
+    gap: 4px 18px;
+  }
+
+  .self-card,
+  .self-composer {
+    padding: 22px 20px 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .self-sun,
+  .self-mist {
+    animation: none;
+  }
+
+  .self-card,
+  .self-card:hover {
+    transition: none;
+    transform: none;
+  }
+}

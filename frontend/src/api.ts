@@ -563,6 +563,47 @@ export async function revokeOtherSessions(): Promise<void> {
   await expectOk(await postJson('/api/account/sessions/revoke-others', {}), '操作失败')
 }
 
+// ---- self：随笔 ------------------------------------------------------------
+
+export interface Essay {
+  id: number
+  body: string
+  writtenAt: string
+  editedAt: string | null
+}
+
+export interface EssayList {
+  essays: Essay[]
+  hasMore: boolean
+  total: number
+  /** 看的人是不是 self 的主人，是才露出「写」的入口 */
+  canWrite: boolean
+}
+
+/** 不用登录也能读。before 是上一页最老那条的 id，不传就从最新的开始。 */
+export async function fetchEssays(before?: number): Promise<EssayList> {
+  const res = await apiFetch(before ? `/api/self/essays?before=${before}` : '/api/self/essays')
+  // 没登录的访客撞到 401 也别把人送去登录页 —— 这一页本来就不用登录
+  return handle<EssayList>(res, true)
+}
+
+export async function writeEssay(body: string): Promise<Essay> {
+  return handle<Essay>(await postJson('/api/self/essays', { body }))
+}
+
+export async function reviseEssay(id: number, body: string): Promise<Essay> {
+  const res = await apiFetch(`/api/self/essays/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ body }),
+  })
+  return handle<Essay>(res)
+}
+
+export async function deleteEssay(id: number): Promise<void> {
+  await expectOk(await apiFetch(`/api/self/essays/${id}`, { method: 'DELETE' }), '删除失败')
+}
+
 /** 把粘贴的文本解析成卡片数组。支持 Tab 或逗号分隔，一行一张。 */
 export function parseImportText(text: string): { front: string; back: string }[] {
   return text
