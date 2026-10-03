@@ -56,6 +56,18 @@ class EssayIntegrationTest {
     }
 
     @Test
+    @DisplayName("单独一篇也不用登录就能读，不存在的回 404")
+    void anyoneCanReadOne() throws Exception {
+        long id = writeAsOwner("分享出去的这一篇");
+
+        mvc.perform(get("/api/self/essays/" + id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.body").value("分享出去的这一篇"));
+        mvc.perform(get("/api/self/essays/" + Long.MAX_VALUE))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
     @DisplayName("没登录写不了")
     void anonymousCannotWrite() throws Exception {
         mvc.perform(post("/api/self/essays").with(csrf())

@@ -1,15 +1,17 @@
-import { Fragment } from 'react'
+import { Fragment, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import type { Essay } from '../api'
 import { cnNumber, termFinder, WEEKDAYS } from './season'
-import { formatTime, groupByMonth, monthAnchor, paragraphs } from './essays'
+import { formatTime, groupByMonth, isShort, monthAnchor, paragraphs } from './essays'
 import type { Day, Month } from './essays'
 import { useMasonry } from './masonry'
+import { useTheme } from './theme'
 
 /**
  * 极光：几条很大的柔光色带在天上慢慢飘、互相叠。
  * 打头那条是今天节气的颜色，其余是极光常见的绿、蓝、紫、粉。
+ * 夜里色带变成带光丝的光幕，再加一层星星（样式见 self.css 的「夜」）。
  */
 export function Sky({ color }: { color: string }) {
   return (
@@ -19,18 +21,31 @@ export function Sky({ color }: { color: string }) {
       <div className="self-aurora is-violet" />
       <div className="self-aurora is-blue" />
       <div className="self-aurora is-rose" />
+      <div className="self-stars" />
       <div className="self-grain" />
     </div>
   )
 }
 
 export function SelfNav({ children }: { children?: ReactNode }) {
+  const { theme, toggle } = useTheme()
   return (
     <nav className="self-nav">
       <Link to="/self" className="self-mark">
         self
       </Link>
-      <span className="self-nav-right">{children}</span>
+      <span className="self-nav-right">
+        {children}
+        {/* 写的是点了之后会变成什么 */}
+        <button
+          onClick={toggle}
+          className="self-theme"
+          aria-label={theme === 'dark' ? '切换到日间' : '切换到夜间'}
+          title={theme === 'dark' ? '切换到日间' : '切换到夜间'}
+        >
+          {theme === 'dark' ? '昼' : '夜'}
+        </button>
+      </span>
     </nav>
   )
 }
@@ -46,7 +61,7 @@ export function Paragraphs({ body }: { body: string }) {
 
 /**
  * 展示页：一条随笔一张卡片。日期单独一行横跨整排，下面是这一天写的几条，
- * 按落笔先后瀑布流排开。
+ * 按落笔先后瀑布流排开。长的只露前几行，点开读全文（见 Reader.tsx）。
  * hasMore 时最老的那个月可能还没取全，篇数先不标。
  */
 export function NoteWall({ essays, hasMore }: { essays: Essay[]; hasMore: boolean }) {
@@ -70,10 +85,7 @@ export function NoteWall({ essays, hasMore }: { essays: Essay[]; hasMore: boolea
                   <span className="self-tag">{term.name}</span>
                 </div>
                 {day.essays.map((essay) => (
-                  <article key={essay.id} className="self-card self-note">
-                    <Paragraphs body={essay.body} />
-                    <div className="self-time">{formatTime(essay.writtenAt)}</div>
-                  </article>
+                  <NoteCard key={essay.id} essay={essay} />
                 ))}
               </Fragment>
             )
@@ -81,6 +93,43 @@ export function NoteWall({ essays, hasMore }: { essays: Essay[]; hasMore: boolea
         </Fragment>
       ))}
     </section>
+  )
+}
+
+/**
+ * 展示页的一张卡片。正文最多露六行左右（高度上限在 self.css 的 .self-note-body），
+ * 放不下就在底部渐隐、露出「读全文」—— 卡片高矮差不多，瀑布流才整齐。
+ * 整张卡片是个链接：点开在地址上加 ?e=id，由展示页浮出阅读层；按返回键就关上。
+ */
+function NoteCard({ essay }: { essay: Essay }) {
+  const body = useRef<HTMLDivElement>(null)
+  const [clipped, setClipped] = useState(false)
+
+  // 截没截断只能量出来：字数相同，在宽屏和窄屏上占的行数不一样
+  useLayoutEffect(() => {
+    const el = body.current
+    if (!el) return
+    const check = () => setClipped(el.scrollHeight > el.clientHeight + 1)
+    check()
+    const observer = new ResizeObserver(check)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [essay.body])
+
+  const classes = ['self-card', 'self-note']
+  if (isShort(essay.body)) classes.push('is-short')
+  if (clipped) classes.push('is-clipped')
+
+  return (
+    <Link to={{ search: `?e=${essay.id}` }} state={{ fromWall: true }} className={classes.join(' ')}>
+      <div className="self-note-body" ref={body}>
+        <Paragraphs body={essay.body} />
+      </div>
+      <div className="self-note-foot">
+        {clipped && <span className="self-read-more">读全文</span>}
+        <span className="self-time">{formatTime(essay.writtenAt)}</span>
+      </div>
+    </Link>
   )
 }
 

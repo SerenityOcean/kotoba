@@ -64,6 +64,14 @@ export function paragraphs(body: string): Paragraph[] {
     .map((text) => ({ text, attribution: ATTRIBUTION.test(text) }))
 }
 
+/** 一两行就说完的算短句：不超过这么多字，而且只有一段（出处行不算）。 */
+const SHORT_LIMIT = 90
+
+export function isShort(body: string): boolean {
+  const own = paragraphs(body).filter((p) => !p.attribution)
+  return own.length <= 1 && countChars(body) <= SHORT_LIMIT
+}
+
 /** 字数：空白不算，标点算。展示页和写的时候用同一个数法。 */
 export function countChars(text: string): number {
   return text.replace(/\s/g, '').length
