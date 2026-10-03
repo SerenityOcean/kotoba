@@ -50,6 +50,12 @@ public class EssayController {
                 owner.is(user));
     }
 
+    /** 单独一篇：分享出去的链接打开时，那篇可能不在第一页里。 */
+    @GetMapping("/{id}")
+    public EssayResponse one(@PathVariable Long id) {
+        return EssayResponse.from(essayService.find(id));
+    }
+
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public EssayResponse write(@AuthenticationPrincipal AppUserPrincipal user,

@@ -1,21 +1,35 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { cnNumber, seasonOf, todayLabel } from './season'
 import { groupByMonth, monthAnchor, useEssays } from './essays'
 import type { Month } from './essays'
 import { NoteWall, SelfNav, Sky } from './parts'
+import Reader from './Reader'
 
 /**
  * self：随笔的展示页，谁都能看。
  *
  * 宽屏上分两栏：左边固定不动的是「此刻」—— 今天的节气、第几天、走到第几候，
- * 下面是月份目录；右边往下滚的是「写过的」，一条一张卡片，瀑布流排开。
+ * 下面是月份目录；右边往下滚的是「写过的」，一条一张卡片，瀑布流排开；长的点开读全文。
  * 窄屏上左栏回到顶部，月份目录收起来。
  */
 export default function SelfPage() {
   const now = new Date()
   const season = seasonOf(now)
   const { list, error, loadingMore, loadMore } = useEssays()
+  // ?e=id：正在读的那一篇
+  const [params, setParams] = useSearchParams()
+  const location = useLocation()
+  const navigate = useNavigate()
+  const reading = Number(params.get('e')) || null
+  const fromWall = (location.state as { fromWall?: boolean } | null)?.fromWall
+  // 从卡片点进来的，关掉就是退回上一步，返回键和关闭按钮效果一样；
+  // 直接打开分享链接进来的没有上一步可退，就把参数去掉
+  const closeReader = useCallback(() => {
+    if (fromWall) navigate(-1)
+    else setParams({}, { replace: true })
+  }, [fromWall, navigate, setParams])
+
   const months = useMemo(() => (list ? groupByMonth(list.essays) : []), [list])
 
   return (
@@ -72,6 +86,10 @@ export default function SelfPage() {
           </main>
         </div>
       </div>
+
+      {reading && (
+        <Reader id={reading} loaded={list?.essays.find((e) => e.id === reading)} onClose={closeReader} />
+      )}
     </div>
   )
 }

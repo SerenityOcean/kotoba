@@ -36,6 +36,11 @@ public class EssayService {
         return new EssayPage(hasMore ? found.subList(0, size) : found, hasMore, essays.count());
     }
 
+    @Transactional(readOnly = true)
+    public Essay find(Long id) {
+        return essays.findById(id).orElseThrow(EssayNotFoundException::new);
+    }
+
     @Transactional
     public Essay write(String rawBody, Instant now) {
         return essays.save(new Essay(normalize(rawBody), now));

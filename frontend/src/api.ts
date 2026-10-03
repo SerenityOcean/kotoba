@@ -587,6 +587,11 @@ export async function fetchEssays(before?: number): Promise<EssayList> {
   return handle<EssayList>(res, true)
 }
 
+/** 单独一篇，同样不用登录。分享出去的链接打开时，那篇可能不在第一页里。 */
+export async function fetchEssay(id: number): Promise<Essay> {
+  return handle<Essay>(await apiFetch(`/api/self/essays/${id}`), true)
+}
+
 export async function writeEssay(body: string): Promise<Essay> {
   return handle<Essay>(await postJson('/api/self/essays', { body }))
 }
