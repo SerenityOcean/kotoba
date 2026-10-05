@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { RUBY } from '../reading'
 
 /**
  * 把 `諦[あきら]める` 这种记法渲染成真正的振り仮名 —— 假名排在汉字上方，
@@ -7,8 +8,6 @@ import type { ReactNode } from 'react'
  * 底字只认汉字：`これは諦[あきら]める` 里只有「諦」会被注音，
  * 前面的假名不会被卷进去。
  */
-const RUBY = /([一-鿿々〆ヶ]+)\[([^[\]]+)\]/g
-
 export default function Furigana({ text }: { text: string }) {
   if (!text.includes('[')) {
     return <>{text}</>

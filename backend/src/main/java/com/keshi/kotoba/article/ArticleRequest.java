@@ -3,7 +3,8 @@ package com.keshi.kotoba.article;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-public record CreateArticleRequest(
+/** 存和改用同一个形状：改的时候三样一起提交，没改的原样带回来。 */
+public record ArticleRequest(
 
         @NotBlank(message = "标题不能为空")
         @Size(max = 200, message = "标题太长了")

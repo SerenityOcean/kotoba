@@ -6,6 +6,7 @@ import CardsPage from './pages/CardsPage'
 import AnalyzePage from './pages/AnalyzePage'
 import ArticlesPage from './pages/ArticlesPage'
 import ArticlePage from './pages/ArticlePage'
+import ArticleEditPage from './pages/ArticleEditPage'
 import LoginPage from './pages/LoginPage'
 import HiganPage from './pages/HiganPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
@@ -130,6 +131,14 @@ function Kotoba() {
               element={
                 <RequireAuth>
                   <ArticlePage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/reading/:id/edit"
+              element={
+                <RequireAuth>
+                  <ArticleEditPage />
                 </RequireAuth>
               }
             />

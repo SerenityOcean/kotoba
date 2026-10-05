@@ -44,10 +44,15 @@ public class Article {
 
     public Article(Long ownerId, String title, String body, String sourceUrl, Instant createdAt) {
         this.ownerId = ownerId;
+        this.createdAt = createdAt;
+        revise(title, body, sourceUrl);
+    }
+
+    /** 改标题、正文、来源。保存时间不动 —— 列表按它排，改一下不该跑到最前面去。 */
+    public void revise(String title, String body, String sourceUrl) {
         this.title = title.trim();
         this.body = body;
         this.sourceUrl = sourceUrl == null || sourceUrl.isBlank() ? null : sourceUrl.trim();
-        this.createdAt = createdAt;
     }
 
     public Long getId() {

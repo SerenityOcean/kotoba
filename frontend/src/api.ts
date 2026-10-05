@@ -326,9 +326,48 @@ export interface FuriganaResult {
   annotated: boolean
 }
 
-export async function fetchArticles(): Promise<ArticleSummary[]> {
-  const res = await apiFetch('/api/articles')
-  return handle<ArticleSummary[]>(res)
+/** 列表的一页。page 从 0 数；totalPages、total 都是按当前搜索词算的。 */
+export interface ArticleList {
+  articles: ArticleSummary[]
+  page: number
+  totalPages: number
+  total: number
+}
+
+/** 阅读页顶上那几个数，不受搜索和翻页影响。 */
+export interface ArticleStats {
+  count: number
+  chars: number
+  /** 最近一次保存，一篇都没有时是 null */
+  latest: string | null
+}
+
+export interface ArticleLink {
+  id: number
+  title: string
+}
+
+/** 列表顺序（保存时间倒序）里的前后两篇：previous 更新，next 更旧。 */
+export interface ArticleNeighbors {
+  previous: ArticleLink | null
+  next: ArticleLink | null
+}
+
+export async function fetchArticles(page: number, query = '', size = 20): Promise<ArticleList> {
+  const params = new URLSearchParams({ page: String(page), size: String(size) })
+  if (query.trim() !== '') params.set('q', query.trim())
+  const res = await apiFetch(`/api/articles?${params}`)
+  return handle<ArticleList>(res)
+}
+
+export async function fetchArticleStats(): Promise<ArticleStats> {
+  const res = await apiFetch('/api/articles/stats')
+  return handle<ArticleStats>(res)
+}
+
+export async function fetchArticleNeighbors(id: number): Promise<ArticleNeighbors> {
+  const res = await apiFetch(`/api/articles/${id}/neighbors`)
+  return handle<ArticleNeighbors>(res)
 }
 
 export async function fetchArticle(id: number): Promise<Article> {
@@ -343,6 +382,20 @@ export async function createArticle(
 ): Promise<Article> {
   const res = await apiFetch('/api/articles', {
     method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, body, sourceUrl }),
+  })
+  return handle<Article>(res)
+}
+
+export async function updateArticle(
+  id: number,
+  title: string,
+  body: string,
+  sourceUrl?: string,
+): Promise<Article> {
+  const res = await apiFetch(`/api/articles/${id}`, {
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title, body, sourceUrl }),
   })
