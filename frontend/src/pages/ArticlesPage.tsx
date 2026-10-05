@@ -3,6 +3,7 @@ import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { createArticle, deleteArticle, fetchArticleStats, fetchArticles } from '../api'
 import type { ArticleList, ArticleStats } from '../api'
 import ArticleForm from '../components/ArticleForm'
+import Pagination from '../components/Pagination'
 import { rememberListSearch } from '../reading'
 
 const PAGE_SIZE = 20
@@ -231,7 +232,11 @@ export default function ArticlesPage() {
         <Pagination
           page={page}
           totalPages={list.totalPages}
-          href={(n) => `?${pageParams(params, n)}`}
+          onSelect={(n) => {
+            setParams(pageParams(params, n))
+            // 换页时回到顶上，不然新的一页是从底部开始看的
+            window.scrollTo(0, 0)
+          }}
         />
       )}
     </div>
@@ -244,86 +249,6 @@ function pageParams(params: URLSearchParams, page: number): URLSearchParams {
   if (page <= 1) next.delete('page')
   else next.set('page', String(page))
   return next
-}
-
-/**
- * 1 … 4 5 6 … 20：头尾、当前页和左右各一页，其余折成省略号。
- * 只隔着一页时直接把那页写出来 —— 省略号占的地方一样，还看不出是哪页。
- */
-function pageWindow(current: number, total: number): (number | null)[] {
-  const kept = [...new Set([1, current - 1, current, current + 1, total])]
-    .filter((p) => p >= 1 && p <= total)
-    .sort((a, b) => a - b)
-
-  const result: (number | null)[] = []
-  kept.forEach((p, i) => {
-    const gap = i === 0 ? 1 : p - kept[i - 1]
-    if (gap === 2) result.push(p - 1)
-    else if (gap > 2) result.push(null)
-    result.push(p)
-  })
-  return result
-}
-
-function Pagination({
-  page,
-  totalPages,
-  href,
-}: {
-  page: number
-  totalPages: number
-  href: (page: number) => string
-}) {
-  if (totalPages <= 1) return null
-
-  // 换页时回到列表顶上，不然新的一页是从底部开始看的
-  const toTop = () => window.scrollTo(0, 0)
-  const step = 'px-2 py-1 text-hai transition hover:text-sumi'
-
-  return (
-    <nav className="mt-10 flex flex-wrap items-baseline justify-center gap-x-1 gap-y-2 text-sm">
-      {page > 1 ? (
-        <Link to={href(page - 1)} onClick={toTop} className={`${step} mr-3`}>
-          ← 上一页
-        </Link>
-      ) : (
-        <span className="mr-3 px-2 py-1 text-hai/40">← 上一页</span>
-      )}
-
-      {pageWindow(page, totalPages).map((p, i) =>
-        p === null ? (
-          <span key={`gap-${i}`} className="px-1 text-hai/60">
-            …
-          </span>
-        ) : p === page ? (
-          <span
-            key={p}
-            aria-current="page"
-            className="min-w-8 border-b border-sumi px-2 py-1 text-center tabular-nums text-sumi"
-          >
-            {p}
-          </span>
-        ) : (
-          <Link
-            key={p}
-            to={href(p)}
-            onClick={toTop}
-            className="min-w-8 border-b border-transparent px-2 py-1 text-center tabular-nums text-hai transition hover:text-sumi"
-          >
-            {p}
-          </Link>
-        ),
-      )}
-
-      {page < totalPages ? (
-        <Link to={href(page + 1)} onClick={toTop} className={`${step} ml-3`}>
-          下一页 →
-        </Link>
-      ) : (
-        <span className="ml-3 px-2 py-1 text-hai/40">下一页 →</span>
-      )}
-    </nav>
-  )
 }
 
 /** 和首页的统计块同一套观感 —— 大字号数字 + 小字标签。 */
