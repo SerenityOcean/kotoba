@@ -1,130 +1,101 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import {
-  annotateFurigana,
-  createArticle,
-  deleteArticle,
-  fetchArticles,
-  splitForFurigana,
-} from '../api'
-import type { ArticleSummary } from '../api'
+import { useEffect, useState } from 'react'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
+import { createArticle, deleteArticle, fetchArticleStats, fetchArticles } from '../api'
+import type { ArticleList, ArticleStats } from '../api'
+import ArticleForm from '../components/ArticleForm'
+import { rememberListSearch } from '../reading'
 
-/** 注音时同时在飞的请求数。 */
-const CONCURRENCY = 4
+const PAGE_SIZE = 20
 
+/** 搜索框停手这么久才去查，免得每敲一个字发一次请求。 */
+const SEARCH_DELAY = 300
+
+/**
+ * 读过的文章列表。翻页和搜索都交给后端，页码和搜索词放在地址栏里
+ * （`?page=3&q=…`）—— 点进一篇再回来，还停在原来那一页。
+ */
 export default function ArticlesPage() {
-  const [articles, setArticles] = useState<ArticleSummary[]>([])
-  const [loading, setLoading] = useState(true)
+  const location = useLocation()
+  const [params, setParams] = useSearchParams()
+  // 地址栏里的页码从 1 数，人看着顺；后端从 0 数
+  const page = Math.max(1, Math.floor(Number(params.get('page'))) || 1)
+  const q = params.get('q') ?? ''
+
+  const [list, setList] = useState<ArticleList | null>(null)
+  const [stats, setStats] = useState<ArticleStats | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // 存、删之后加一，列表和统计跟着重新取
+  const [version, setVersion] = useState(0)
 
-  const [query, setQuery] = useState('')
+  const [query, setQuery] = useState(q)
   const [adding, setAdding] = useState(false)
-  const [title, setTitle] = useState('')
-  const [body, setBody] = useState('')
-  const [sourceUrl, setSourceUrl] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
-
-  async function load() {
-    try {
-      setArticles(await fetchArticles())
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '加载失败')
-    } finally {
-      setLoading(false)
-    }
-  }
+  // 正在确认删除的那篇。删除要点两下：第一下只是问一句
+  const [confirming, setConfirming] = useState<number | null>(null)
 
   useEffect(() => {
-    load()
-  }, [])
+    rememberListSearch(location.search)
+  }, [location.search])
 
-  /**
-   * 存之前先给全文注音：按块并行，每块回来填回原位。
-   *
-   * 某一块注不上（模型改了正文、或者请求失败）就用原文，不让整篇存不下来 ——
-   * 文章是你的东西，注音只是锦上添花，不该因为它丢了正文。
-   */
-  async function handleSave() {
-    if (title.trim() === '' || body.trim() === '') {
-      setError('标题和正文都不能为空')
-      return
+  useEffect(() => {
+    // 搜索词变得快，先发的请求可能后回来 —— 过时的结果直接扔掉
+    let stale = false
+    fetchArticles(page - 1, q, PAGE_SIZE)
+      .then((result) => {
+        if (stale) return
+        setList(result)
+        setError(null)
+      })
+      .catch((e) => {
+        if (!stale) setError(e instanceof Error ? e.message : '加载失败')
+      })
+    return () => {
+      stale = true
     }
+  }, [page, q, version])
 
-    const pieces = splitForFurigana(body)
-    const targets = pieces.flatMap((p, i) => (p.annotate ? [i] : []))
-    const annotated = pieces.map((p) => p.text)
+  useEffect(() => {
+    fetchArticleStats()
+      .then(setStats)
+      .catch(() => {})
+  }, [version])
 
-    setSaving(true)
-    setError(null)
-    setProgress({ done: 0, total: targets.length })
+  // 地址栏的搜索词被前进/后退改了，输入框跟上。是自己刚写进去的就别动，
+  // 不然打到一半的空格会被吃掉
+  useEffect(() => {
+    setQuery((current) => (current.trim() === q ? current : q))
+  }, [q])
 
-    let plain = 0
-    let cursor = 0
-    await Promise.all(
-      Array.from({ length: Math.min(CONCURRENCY, targets.length) }, async () => {
-        while (cursor < targets.length) {
-          const index = targets[cursor++]
-          try {
-            const result = await annotateFurigana(pieces[index].text)
-            annotated[index] = result.text
-            if (!result.annotated) plain += 1
-          } catch {
-            plain += 1
-          }
-          setProgress((p) => (p ? { ...p, done: p.done + 1 } : p))
-        }
-      }),
+  // 停手一会儿才把搜索词写进地址栏；换了搜索词从第一页看起
+  useEffect(() => {
+    const keyword = query.trim()
+    if (keyword === q) return
+    const timer = setTimeout(
+      () => setParams(keyword === '' ? {} : { q: keyword }, { replace: true }),
+      SEARCH_DELAY,
     )
+    return () => clearTimeout(timer)
+  }, [query, q, setParams])
 
-    try {
-      await createArticle(title, annotated.join(''), sourceUrl || undefined)
-      setTitle('')
-      setBody('')
-      setSourceUrl('')
-      setAdding(false)
-      if (plain > 0) {
-        setError(`存好了，但有 ${plain} 段没能注音，那几段是原样存的`)
-      }
-      await load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '保存失败')
-    } finally {
-      setSaving(false)
-      setProgress(null)
+  // 页码超出了（比如删光了最后一页，或者手改了地址栏）就落到最后一页
+  useEffect(() => {
+    if (list && list.totalPages > 0 && page > list.totalPages) {
+      setParams(pageParams(params, list.totalPages), { replace: true })
     }
-  }
+  }, [list, page, params, setParams])
 
   async function handleDelete(id: number) {
     try {
       await deleteArticle(id)
-      await load()
+      setConfirming(null)
+      setVersion((v) => v + 1)
     } catch (e) {
       setError(e instanceof Error ? e.message : '删除失败')
     }
   }
 
-  const stats = useMemo(
-    () => ({
-      count: articles.length,
-      chars: articles.reduce((sum, a) => sum + a.length, 0),
-      // 最近一次保存，没有文章时为 null
-      latest: articles[0]?.createdAt ?? null,
-    }),
-    [articles],
-  )
-
-  // 只按标题筛，在已经加载好的列表上做 —— 不用多跑一趟后端
-  const visible = useMemo(() => {
-    const keyword = query.trim().toLowerCase()
-    if (keyword === '') return articles
-    return articles.filter((a) => a.title.toLowerCase().includes(keyword))
-  }, [articles, query])
-
   return (
     <div>
-      {articles.length > 0 && (
+      {stats && stats.count > 0 && (
         <section className="mb-8 border-b border-usu pb-6">
           <div className="flex items-end gap-10">
             <Stat label="文章" value={stats.count} accent />
@@ -156,93 +127,50 @@ export default function ArticlesPage() {
             存一篇文章
           </button>
         ) : (
-          <div className="flex flex-col gap-4">
-            <label>
-              <span className="mb-1 block text-xs tracking-wider text-hai">标题</span>
-              <input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="台風25号 20日ごろ東日本に接近"
-                autoFocus
-                className="w-full border-b border-usu bg-transparent pb-1.5 font-mincho text-lg placeholder:font-ui placeholder:text-sm placeholder:text-hai/40 focus:border-ai focus:outline-none"
-              />
-            </label>
-
-            <label>
-              <span className="mb-1 block text-xs tracking-wider text-hai">正文</span>
-              <textarea
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                rows={10}
-                placeholder="把文章正文粘在这里。段落和换行会原样保留。"
-                className="w-full resize-y border border-usu bg-transparent p-3 font-mincho text-base leading-relaxed placeholder:font-ui placeholder:text-sm placeholder:text-hai/40 focus:border-ai focus:outline-none"
-              />
-            </label>
-
-            <label>
-              <span className="mb-1 block text-xs tracking-wider text-hai">
-                来源链接（可不填）
-              </span>
-              <input
-                value={sourceUrl}
-                onChange={(e) => setSourceUrl(e.target.value)}
-                placeholder="https://www3.nhk.or.jp/news/..."
-                className="w-full border-b border-usu bg-transparent pb-1.5 text-sm placeholder:text-hai/40 focus:border-ai focus:outline-none"
-              />
-            </label>
-
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="rounded-sm bg-ai px-5 py-2.5 text-sm text-washi transition hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-30"
-              >
-                {saving ? '保存中…' : '保存'}
-              </button>
-              <button
-                onClick={() => {
-                  setAdding(false)
-                  setError(null)
-                }}
-                disabled={saving}
-                className="text-xs text-hai transition hover:text-sumi disabled:opacity-30"
-              >
-                取消
-              </button>
-              <span className="text-xs text-hai">
-                {progress
-                  ? `注音中… ${progress.done}/${progress.total} 段`
-                  : '保存时会给全文加上振假名，长文章要等一会儿'}
-              </span>
-            </div>
-          </div>
+          <ArticleForm
+            submitLabel="保存"
+            hint="保存时会给全文加上振假名，长文章要等一会儿"
+            onSave={async (draft, plain) => {
+              await createArticle(draft.title, draft.body, draft.sourceUrl)
+              setAdding(false)
+              setError(plain > 0 ? `存好了，但有 ${plain} 段没能注音，那几段是原样存的` : null)
+              // 新存的排在最前面：回第一页、清掉搜索，才看得到它
+              setQuery('')
+              setParams({})
+              setVersion((v) => v + 1)
+            }}
+            onCancel={() => setAdding(false)}
+          />
         )}
 
         {error && <p className="mt-3 text-sm text-shu">{error}</p>}
       </section>
 
-      {articles.length > 1 && (
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="按标题搜索"
-          className="mb-2 w-full border-b border-usu bg-transparent pb-1.5 text-sm placeholder:text-hai/40 focus:border-ai focus:outline-none"
-        />
+      {stats && stats.count > 1 && (
+        <div className="mb-2 flex items-baseline gap-4 border-b border-usu pb-1.5 focus-within:border-ai">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="按标题搜索"
+            className="min-w-0 flex-1 bg-transparent text-sm placeholder:text-hai/40 focus:outline-none"
+          />
+          {q !== '' && list && list.total > 0 && (
+            <span className="shrink-0 text-xs tabular-nums text-hai">找到 {list.total} 篇</span>
+          )}
+        </div>
       )}
 
-      {loading ? (
+      {!list ? (
         <p className="text-sm text-hai">加载中…</p>
-      ) : articles.length === 0 ? (
+      ) : stats?.count === 0 ? (
         <p className="py-10 text-center text-sm text-hai">
           还没有文章。把你最近读的那篇存进来。
         </p>
-      ) : visible.length === 0 ? (
-        <p className="py-10 text-center text-sm text-hai">
-          没有标题包含「{query.trim()}」的文章。
-        </p>
+      ) : list.articles.length === 0 && q !== '' ? (
+        <p className="py-10 text-center text-sm text-hai">没有标题包含「{q}」的文章。</p>
       ) : (
         <ul>
-          {visible.map((article) => (
+          {list.articles.map((article) => (
             <li key={article.id} className="group border-b border-usu py-4">
               <div className="flex items-baseline gap-3">
                 <Link
@@ -254,14 +182,43 @@ export default function ArticlesPage() {
                 <span className="shrink-0 text-xs tabular-nums text-hai">
                   {article.length} 字
                 </span>
-                <button
-                  onClick={() => handleDelete(article.id)}
-                  className="shrink-0 text-xs text-hai transition hover:text-shu sm:opacity-0 sm:group-hover:opacity-100"
-                >
-                  删除
-                </button>
+                {confirming === article.id ? (
+                  <span className="flex shrink-0 items-baseline gap-3 text-xs">
+                    <button
+                      onClick={() => handleDelete(article.id)}
+                      className="rounded-sm bg-shu px-2.5 py-1 text-washi transition hover:opacity-85"
+                    >
+                      确认删除
+                    </button>
+                    <button
+                      onClick={() => setConfirming(null)}
+                      className="text-hai transition hover:text-sumi"
+                    >
+                      取消
+                    </button>
+                  </span>
+                ) : (
+                  <span className="flex shrink-0 gap-3 text-xs sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+                    <Link
+                      to={`/reading/${article.id}/edit`}
+                      className="text-hai transition hover:text-ai"
+                    >
+                      编辑
+                    </Link>
+                    <button
+                      onClick={() => setConfirming(article.id)}
+                      className="text-hai transition hover:text-shu"
+                    >
+                      删除
+                    </button>
+                  </span>
+                )}
               </div>
-              <p className="mt-1 truncate text-sm text-hai">{article.excerpt}</p>
+              {confirming === article.id ? (
+                <p className="mt-1 text-sm text-shu">删除「{article.title}」？删了就找不回来了。</p>
+              ) : (
+                <p className="mt-1 truncate text-sm text-hai">{article.excerpt}</p>
+              )}
               <p className="mt-1 text-xs text-hai/70">
                 {new Date(article.createdAt).toLocaleDateString('zh-CN')}
               </p>
@@ -269,7 +226,103 @@ export default function ArticlesPage() {
           ))}
         </ul>
       )}
+
+      {list && (
+        <Pagination
+          page={page}
+          totalPages={list.totalPages}
+          href={(n) => `?${pageParams(params, n)}`}
+        />
+      )}
     </div>
+  )
+}
+
+/** 换页码、留着搜索词。第 1 页不写进地址栏，`/reading` 就是第一页。 */
+function pageParams(params: URLSearchParams, page: number): URLSearchParams {
+  const next = new URLSearchParams(params)
+  if (page <= 1) next.delete('page')
+  else next.set('page', String(page))
+  return next
+}
+
+/**
+ * 1 … 4 5 6 … 20：头尾、当前页和左右各一页，其余折成省略号。
+ * 只隔着一页时直接把那页写出来 —— 省略号占的地方一样，还看不出是哪页。
+ */
+function pageWindow(current: number, total: number): (number | null)[] {
+  const kept = [...new Set([1, current - 1, current, current + 1, total])]
+    .filter((p) => p >= 1 && p <= total)
+    .sort((a, b) => a - b)
+
+  const result: (number | null)[] = []
+  kept.forEach((p, i) => {
+    const gap = i === 0 ? 1 : p - kept[i - 1]
+    if (gap === 2) result.push(p - 1)
+    else if (gap > 2) result.push(null)
+    result.push(p)
+  })
+  return result
+}
+
+function Pagination({
+  page,
+  totalPages,
+  href,
+}: {
+  page: number
+  totalPages: number
+  href: (page: number) => string
+}) {
+  if (totalPages <= 1) return null
+
+  // 换页时回到列表顶上，不然新的一页是从底部开始看的
+  const toTop = () => window.scrollTo(0, 0)
+  const step = 'px-2 py-1 text-hai transition hover:text-sumi'
+
+  return (
+    <nav className="mt-10 flex flex-wrap items-baseline justify-center gap-x-1 gap-y-2 text-sm">
+      {page > 1 ? (
+        <Link to={href(page - 1)} onClick={toTop} className={`${step} mr-3`}>
+          ← 上一页
+        </Link>
+      ) : (
+        <span className="mr-3 px-2 py-1 text-hai/40">← 上一页</span>
+      )}
+
+      {pageWindow(page, totalPages).map((p, i) =>
+        p === null ? (
+          <span key={`gap-${i}`} className="px-1 text-hai/60">
+            …
+          </span>
+        ) : p === page ? (
+          <span
+            key={p}
+            aria-current="page"
+            className="min-w-8 border-b border-sumi px-2 py-1 text-center tabular-nums text-sumi"
+          >
+            {p}
+          </span>
+        ) : (
+          <Link
+            key={p}
+            to={href(p)}
+            onClick={toTop}
+            className="min-w-8 border-b border-transparent px-2 py-1 text-center tabular-nums text-hai transition hover:text-sumi"
+          >
+            {p}
+          </Link>
+        ),
+      )}
+
+      {page < totalPages ? (
+        <Link to={href(page + 1)} onClick={toTop} className={`${step} ml-3`}>
+          下一页 →
+        </Link>
+      ) : (
+        <span className="ml-3 px-2 py-1 text-hai/40">下一页 →</span>
+      )}
+    </nav>
   )
 }
 

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { fetchArticle, fetchArticles } from '../api'
-import type { Article, ArticleSummary } from '../api'
+import { Link, useLocation, useParams } from 'react-router-dom'
+import { fetchArticle, fetchArticleNeighbors } from '../api'
+import type { Article, ArticleNeighbors } from '../api'
 import { useAnalysis } from '../analysis'
 import Furigana from '../components/Furigana'
 import AnalysisResults, { SaveBar } from '../components/AnalysisResults'
+import { readingListPath } from '../reading'
 
 /**
  * 取当前选区的纯文本。
@@ -32,9 +33,11 @@ function readSelection(): string {
  */
 export default function ArticlePage() {
   const { id } = useParams()
+  // 编辑页存完跳回来时带的话，比如有几段没注上音
+  const notice = (useLocation().state as { notice?: string } | null)?.notice
   const [article, setArticle] = useState<Article | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [siblings, setSiblings] = useState<ArticleSummary[]>([])
+  const [neighbors, setNeighbors] = useState<ArticleNeighbors | null>(null)
   const [selection, setSelection] = useState('')
   // 已经拆过的那段。选中它时不用再弹按钮 —— 没有新东西可拆
   const [analyzed, setAnalyzed] = useState('')
@@ -52,6 +55,7 @@ export default function ArticlePage() {
     if (!id) return
     // 换文章时先清空：否则新的还没到，旧正文还挂在屏幕上，像是没跳转
     setArticle(null)
+    setNeighbors(null)
     setSelection('')
     setAnalyzed('')
     reset()
@@ -62,13 +66,13 @@ export default function ArticlePage() {
       .catch((e) => setError(e instanceof Error ? e.message : '加载失败'))
   }, [id, reset])
 
-  // 上一篇/下一篇要知道自己在整个列表里的位置。列表只有摘要，很轻，
-  // 而且顺序（保存时间倒序）就是导航顺序，不用后端再算一次
+  // 上一篇/下一篇由后端按列表顺序找 —— 列表分页了，前端手里没有整张表
   useEffect(() => {
-    fetchArticles()
-      .then(setSiblings)
+    if (!id) return
+    fetchArticleNeighbors(Number(id))
+      .then(setNeighbors)
       .catch(() => {})
-  }, [])
+  }, [id])
 
   /**
    * 选中了什么。用 selectionchange 而不是 mouseup：键盘选、触屏拖动
@@ -86,9 +90,8 @@ export default function ArticlePage() {
   if (!article) return <p className="text-sm text-hai">加载中…</p>
 
   // 列表是保存时间倒序，所以「上一篇」是列表里更靠上、也就是更新的那篇
-  const index = siblings.findIndex((a) => a.id === article.id)
-  const previous = index > 0 ? siblings[index - 1] : null
-  const next = index >= 0 && index < siblings.length - 1 ? siblings[index + 1] : null
+  const previous = neighbors?.previous ?? null
+  const next = neighbors?.next ?? null
 
   const showPanel = analysis.slots.length > 0
   // 选中了新的一段（不是刚拆过那段）才值得提示
@@ -102,9 +105,11 @@ export default function ArticlePage() {
     >
       {/* 弹层盖住底部时给正文留出余量，否则最后几行够不着。侧栏模式不需要 */}
       <div className={showPanel ? 'pb-[72vh] xl:pb-0' : ''}>
-        <Link to="/reading" className="text-xs text-hai transition hover:text-sumi">
+        <Link to={readingListPath()} className="text-xs text-hai transition hover:text-sumi">
           ← 阅读
         </Link>
+
+        {notice && <p className="mt-3 text-sm text-shu">{notice}</p>}
 
         <article className="mt-5">
           <h1 className="font-mincho text-3xl leading-[1.9] sm:text-4xl">
@@ -125,6 +130,10 @@ export default function ArticlePage() {
                 </a>
               </>
             )}
+            {' · '}
+            <Link to={`/reading/${article.id}/edit`} className="transition hover:text-ai">
+              编辑
+            </Link>
           </p>
 
           {/* 行高给振假名留空隙，否则假名会贴到上一行；正文限宽保证一行的字数不至于读着累 */}
