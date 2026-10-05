@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   createCard,
   deleteCard,
@@ -12,6 +12,15 @@ import type { Card, Deck, ImportResult } from '../api'
 import AnkiImport from '../components/AnkiImport'
 import Furigana from '../components/Furigana'
 import DeckBar from '../components/DeckBar'
+import Pagination from '../components/Pagination'
+
+/**
+ * 一页多少张。卡片一行很矮，给多一点，一屏翻得快。
+ *
+ * 分页只在前端切：卡片很短，几百上千张一次拉下来也不重；而搜索要剥掉
+ * 注音、正反面一起比，留在前端做最简单，结果也和以前一模一样。
+ */
+const PAGE_SIZE = 50
 
 export default function CardsPage() {
   const [cards, setCards] = useState<Card[]>([])
@@ -30,6 +39,10 @@ export default function CardsPage() {
   const [result, setResult] = useState<ImportResult | null>(null)
 
   const [query, setQuery] = useState('')
+  // 从 1 数。换包、改搜索词都回到第一页
+  const [page, setPage] = useState(1)
+  // 换页后滚回列表开头（搜索框那一行），不是回到页面最顶上的添加表单
+  const listTop = useRef<HTMLDivElement>(null)
   // 正在等待二次确认的那张卡。一次只允许一张，点了别张就把上一张收回去
   const [confirmingId, setConfirmingId] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -123,6 +136,16 @@ export default function CardsPage() {
     )
   }, [cards, query])
 
+  // 删掉最后一页的最后一张之后，页码可能超出 —— 按现有的页数夹一下
+  const totalPages = Math.ceil(visible.length / PAGE_SIZE)
+  const currentPage = Math.min(page, Math.max(totalPages, 1))
+  const shown = visible.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+
+  function selectDeck(id: number | null) {
+    setDeckId(id)
+    setPage(1)
+  }
+
   const parsed = parseImportText(importText)
 
   async function handleImport() {
@@ -146,7 +169,7 @@ export default function CardsPage() {
       <DeckBar
         decks={decks}
         deckId={deckId}
-        onSelect={setDeckId}
+        onSelect={selectDeck}
         onChanged={load}
         onError={setError}
       />
@@ -234,7 +257,7 @@ export default function CardsPage() {
           <AnkiImport
             onImported={(result) => {
               // 导完直接切到那个包，省得还要自己找
-              setDeckId(result.deckId)
+              selectDeck(result.deckId)
               load()
             }}
           />
@@ -257,10 +280,13 @@ export default function CardsPage() {
       </section>
 
       {cards.length > 0 && (
-        <div className="flex items-baseline gap-4 border-b border-usu pb-2">
+        <div ref={listTop} className="flex scroll-mt-4 items-baseline gap-4 border-b border-usu pb-2">
           <input
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              setQuery(e.target.value)
+              setPage(1)
+            }}
             placeholder="搜索正面或背面"
             className="min-w-0 flex-1 bg-transparent text-sm placeholder:text-hai/40 focus:outline-none"
           />
@@ -286,7 +312,7 @@ export default function CardsPage() {
         </p>
       ) : (
         <ul>
-          {visible.map((card) =>
+          {shown.map((card) =>
             editingId === card.id ? (
               <li key={card.id} className="border-b border-usu py-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -382,6 +408,17 @@ export default function CardsPage() {
           )}
         </ul>
       )}
+
+      <Pagination
+        page={currentPage}
+        totalPages={totalPages}
+        onSelect={(n) => {
+          setPage(n)
+          setConfirmingId(null)
+          cancelEdit()
+          listTop.current?.scrollIntoView()
+        }}
+      />
     </div>
   )
 }
