@@ -15,6 +15,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.keshi.kotoba.web.ApiError;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+
 import java.time.Instant;
 import java.util.List;
 
@@ -61,13 +64,21 @@ public class CardController {
                                @PathVariable Long id,
                                @Valid @RequestBody UpdateCardRequest request) {
         return CardResponse.from(
-                cardService.update(user.id(), id, request.front(), request.back()));
+                cardService.update(user.id(), id, request.front(), request.back(), request.reading()));
     }
 
     @PostMapping("/import")
     public CardService.ImportResult importCards(@AuthenticationPrincipal AppUserPrincipal user,
                                                 @Valid @RequestBody ImportRequest request) {
         return cardService.importCards(user.id(), request.deckName(), request.cards(), Instant.now());
+    }
+
+    /** 补读音，一次一批。前端拿 nextAfterId 接着调，直到它是 null。 */
+    @PostMapping("/readings/fill")
+    public CardService.ReadingFill fillReadings(@AuthenticationPrincipal AppUserPrincipal user,
+                                                @RequestParam(required = false) Long afterId,
+                                                @RequestParam(defaultValue = "50") int limit) {
+        return cardService.fillReadings(user.id(), afterId, limit);
     }
 
     @PostMapping("/{id}/review")
@@ -82,5 +93,12 @@ public class CardController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@AuthenticationPrincipal AppUserPrincipal user, @PathVariable Long id) {
         cardService.delete(user.id(), id);
+    }
+
+    /** 读音里写了假名以外的字。 */
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    ApiError onIllegalArgument(IllegalArgumentException e) {
+        return new ApiError(e.getMessage());
     }
 }

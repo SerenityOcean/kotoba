@@ -38,6 +38,10 @@ public class Card {
     @Column(columnDefinition = "text")
     private String back;
 
+    /** 复习时打字对答案用。null = 不考读音，或者还没补上。见 {@link Readings}。 */
+    @Column(columnDefinition = "text")
+    private String reading;
+
     @Column(nullable = false)
     private Instant createdAt;
 
@@ -50,14 +54,27 @@ public class Card {
         this.front = front;
         this.back = back;
         this.createdAt = now;
+        // 建卡时只用确定的信息猜（正面注音、背面开头），不问模型
+        this.reading = Readings.guess(front, back);
     }
 
     /**
      * 修改卡片内容。不影响复习进度 —— 改错别字不该重置进度。
+     *
+     * @param reading 用户填的读音；留空就按新的正反面重新猜一次
      */
-    public void updateContent(String front, String back) {
+    public void updateContent(String front, String back, String reading) {
         this.front = front.trim();
         this.back = back == null ? null : back.trim();
+        String given = Readings.normalize(reading);
+        this.reading = given != null ? given : Readings.guess(this.front, this.back);
+    }
+
+    /** 补读音时用：只在还没有读音时填，不覆盖用户自己写的。 */
+    void fillReading(String reading) {
+        if (this.reading == null) {
+            this.reading = reading;
+        }
     }
 
     public Long getId() {
@@ -83,6 +100,10 @@ public class Card {
 
     public String getBack() {
         return back;
+    }
+
+    public String getReading() {
+        return reading;
     }
 
     public Instant getCreatedAt() {

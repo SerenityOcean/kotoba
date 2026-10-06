@@ -4,6 +4,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import org.springframework.data.domain.Pageable;
+
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -33,4 +35,8 @@ public interface CardRepository extends JpaRepository<Card, Long> {
     List<Long> findIdsByDeckId(@Param("deckId") Long deckId);
 
     void deleteByDeckId(Long deckId);
+
+    /** 补读音按 id 往后翻：afterId 之后、还没读音的卡。 */
+    List<Card> findByOwnerIdAndReadingIsNullAndIdGreaterThanOrderByIdAsc(
+            Long ownerId, Long afterId, Pageable page);
 }

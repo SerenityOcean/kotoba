@@ -1,13 +1,20 @@
 package com.keshi.kotoba.card;
 
+import com.keshi.kotoba.analyze.AnalysisFailedException;
+import com.keshi.kotoba.analyze.AnalysisUnavailableException;
+import com.keshi.kotoba.analyze.FuriganaResult;
+import com.keshi.kotoba.analyze.FuriganaService;
 import com.keshi.kotoba.deck.Deck;
 import com.keshi.kotoba.deck.DeckService;
+import com.keshi.kotoba.text.FuriganaNotation;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,15 +30,21 @@ public class CardService {
     private final UserCardStateRepository stateRepository;
     private final ReviewLogRepository reviewLogRepository;
     private final DeckService deckService;
+    private final FuriganaService furiganaService;
+
+    /** 补读音一批最多这么多张。一批问一次模型，几十个短词几秒钟就回来。 */
+    static final int MAX_FILL_BATCH = 50;
 
     public CardService(CardRepository cardRepository,
                        UserCardStateRepository stateRepository,
                        ReviewLogRepository reviewLogRepository,
-                       DeckService deckService) {
+                       DeckService deckService,
+                       FuriganaService furiganaService) {
         this.cardRepository = cardRepository;
         this.stateRepository = stateRepository;
         this.reviewLogRepository = reviewLogRepository;
         this.deckService = deckService;
+        this.furiganaService = furiganaService;
     }
 
     /** deckId 为 null 表示不限包。 */
@@ -79,10 +92,10 @@ public class CardService {
     }
 
     @Transactional
-    public CardWithState update(Long userId, Long id, String front, String back) {
+    public CardWithState update(Long userId, Long id, String front, String back, String reading) {
         Card card = cardRepository.findByIdAndOwnerId(id, userId)
                 .orElseThrow(() -> new CardNotFoundException(id));
-        card.updateContent(front, back);
+        card.updateContent(front, back, reading);
         cardRepository.save(card);
         UserCardState state = stateRepository.findByUserIdAndCardId(userId, id)
                 .orElseThrow(() -> new CardNotFoundException(id));
@@ -153,6 +166,97 @@ public class CardService {
                 .toList());
 
         return new ImportResult(deck.getId(), deck.getName(), saved.size(), skipped.size(), skipped);
+    }
+
+    /**
+     * 给还没读音的卡补读音，一次一批：afterId 之后的最多 limit 张。
+     *
+     * <p>先用确定的规则（正面注音、背面开头的假名），规则猜不出来的
+     * 攒成一批问一次模型。不开事务：等模型的几秒里不该占着数据库连接，
+     * 存的时候 saveAll 自己有事务。
+     *
+     * <p>模型不可用或者这批失败了，规则那部分照样存，失败原因放在结果里 ——
+     * 前端可以接着往后翻，不至于卡在一批上。
+     */
+    public ReadingFill fillReadings(Long userId, Long afterId, int limit) {
+        int size = Math.clamp(limit, 1, MAX_FILL_BATCH);
+        List<Card> batch = cardRepository.findByOwnerIdAndReadingIsNullAndIdGreaterThanOrderByIdAsc(
+                userId, afterId == null ? 0L : afterId, PageRequest.of(0, size));
+
+        int byRule = 0;
+        Map<String, List<Card>> forModel = new LinkedHashMap<>();
+        for (Card card : batch) {
+            if (!Readings.wanted(card.getFront())) {
+                continue;
+            }
+            String guessed = Readings.guess(card.getFront(), card.getBack());
+            if (guessed != null) {
+                card.fillReading(guessed);
+                byRule++;
+            } else {
+                forModel.computeIfAbsent(FuriganaNotation.strip(card.getFront()).strip(),
+                        k -> new ArrayList<>()).add(card);
+            }
+        }
+
+        int byModel = 0;
+        String modelError = null;
+        if (!forModel.isEmpty()) {
+            try {
+                Map<String, String> readings = readingsFromModel(forModel.keySet());
+                for (Map.Entry<String, String> found : readings.entrySet()) {
+                    for (Card card : forModel.get(found.getKey())) {
+                        card.fillReading(found.getValue());
+                        byModel++;
+                    }
+                }
+            } catch (AnalysisUnavailableException | AnalysisFailedException e) {
+                modelError = e.getMessage();
+            }
+        }
+
+        cardRepository.saveAll(batch.stream().filter(c -> c.getReading() != null).toList());
+
+        int filled = byRule + byModel;
+        int asked = (int) batch.stream().filter(c -> Readings.wanted(c.getFront())).count();
+        Long lastId = batch.size() < size ? null : batch.getLast().getId();
+        return new ReadingFill(byRule, byModel, asked - filled, lastId, modelError);
+    }
+
+    /**
+     * 一行一个词交给注音服务，回来按行拆开。注音服务自己会校验模型没改字；
+     * 这里再逐行核对一遍，行数对不上或者某行对不上底字的就不要了。
+     */
+    private Map<String, String> readingsFromModel(Collection<String> plainFronts) {
+        List<String> words = List.copyOf(plainFronts);
+        FuriganaResult result = furiganaService.annotate(String.join("\n", words));
+
+        Map<String, String> readings = new HashMap<>();
+        // 空行不算：模型有时在词和词之间多空一行
+        List<String> lines = result.text().lines().map(String::strip).filter(l -> !l.isEmpty()).toList();
+        if (!result.annotated() || lines.size() != words.size()) {
+            return readings;
+        }
+        for (int i = 0; i < lines.size(); i++) {
+            String line = lines.get(i);
+            String word = words.get(i);
+            String reading = Readings.fromAnnotated(line);
+            if (FuriganaNotation.strip(line).equals(word)
+                    && reading != null && Readings.fits(word, reading)) {
+                readings.put(word, reading);
+            }
+        }
+        return readings;
+    }
+
+    /**
+     * 一批补读音的结果。
+     *
+     * @param missed     该有读音但这批没补上的张数
+     * @param nextAfterId 下一批从哪儿接着翻；null 表示翻完了
+     * @param modelError 模型那一步失败的原因，没问模型或者成功了是 null
+     */
+    public record ReadingFill(int byRule, int byModel, int missed, Long nextAfterId, String modelError) {
     }
 
     /** 删包连卡片一起删 —— 包是卡片的容器，空留一个壳没意义。 */
