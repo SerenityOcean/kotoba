@@ -56,9 +56,42 @@ export default function AnalysisResults({ analysis }: { analysis: Analysis }) {
                           <span className="rounded-sm bg-usu px-1.5 py-0.5 text-xs text-sumi">
                             {v.form}
                           </span>
+                          {v.transitivity && (
+                            <span className="rounded-sm border border-usu px-1.5 py-0.5 text-xs text-hai">
+                              {v.transitivity}
+                            </span>
+                          )}
                           <span className="text-xs text-hai">{v.meaning}</span>
                         </p>
                         <p className="mt-1.5 text-sm leading-relaxed">{v.explanation}</p>
+                        {v.usage && (
+                          <p className="mt-1.5 border-l-2 border-usu pl-3 text-sm leading-loose text-hai">
+                            <span className="mr-1.5 text-xs tracking-wider">用法</span>
+                            <Furigana text={v.usage} />
+                          </p>
+                        )}
+                      </Row>
+                    ))}
+                  </>
+                )}
+
+                {s.loanwords && s.loanwords.length > 0 && (
+                  <>
+                    <Heading>外来语</Heading>
+                    {s.loanwords.map((w, j) => (
+                      <Row
+                        key={j}
+                        checked={selected.has(`${i}-${k}w${j}`)}
+                        onToggle={() => toggle(`${i}-${k}w${j}`)}
+                      >
+                        <p className="flex flex-wrap items-baseline gap-x-2 leading-loose">
+                          <span className="font-mincho text-lg">{w.surface}</span>
+                          <span className="text-base text-ai">{w.english}</span>
+                          <span className="text-xs text-hai">{w.meaning}</span>
+                        </p>
+                        {w.origin && w.origin !== '英语' && (
+                          <p className="mt-0.5 text-xs text-hai">{w.origin}</p>
+                        )}
                       </Row>
                     ))}
                   </>

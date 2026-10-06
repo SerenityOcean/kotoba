@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -16,6 +17,24 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OpenAiCompatibleEngineTest {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+
+    private static final OpenAiCompatibleEngine ENGINE =
+            new OpenAiCompatibleEngine(null, JSON, "test", "false");
+
+    @Test
+    @DisplayName("完整对象后面多一个 }，照样读出来")
+    void ignoresTrailingCloseBrace() {
+        JsonNode node = ENGINE.readFirstValue("{\"sentences\":[{\"original\":\"いており\"}]}}");
+
+        assertEquals("いており", node.get("sentences").get(0).get("original").stringValue());
+    }
+
+    @Test
+    @DisplayName("中间括号对不上的，还是解析失败")
+    void stillRejectsBrokenStructure() {
+        assertThrows(Exception.class,
+                () -> ENGINE.readFirstValue("{\"sentences\":[{\"original\":\"空\"}}]}"));
+    }
 
     private static JsonNode unwrap(String raw) {
         return new OpenAiCompatibleEngine(null, JSON, "test", "false")

@@ -46,6 +46,18 @@ export interface VerbUsage {
   form: string
   explanation: string
   meaning: string
+  /** 自动词 / 他动词 / 自他两用；形容词是 い形容词 / な形容词 */
+  transitivity: string
+  /** 这个词本身怎么用：带的助词、固定搭配、自他对应 */
+  usage: string
+}
+
+export interface Loanword {
+  surface: string
+  english: string
+  /** 来源语言；非英语来源、和製英語会在这里说明 */
+  origin: string
+  meaning: string
 }
 
 export interface GrammarPoint {
@@ -59,6 +71,8 @@ export interface AnalyzedSentence {
   original: string
   translation: string
   verbs: VerbUsage[]
+  /** 新字段：改版前的结果里没有，读的时候按可能缺省处理 */
+  loanwords?: Loanword[]
   grammarPoints: GrammarPoint[]
 }
 

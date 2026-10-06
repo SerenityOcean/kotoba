@@ -6,6 +6,7 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.ObjectMapper;
@@ -184,9 +185,22 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
         return start >= 0 && end > start ? content.substring(start, end + 1) : null;
     }
 
+    /**
+     * 读第一个完整的 JSON 值，后面多出来的东西不管。
+     *
+     * <p>模型偶尔会在完整的对象后面多吐一个 {@code }} —— 对象本身一个字不差，
+     * 但 Jackson 3 默认把尾巴上多余的符号当错误，整次拆解就白跑了。
+     * 中间少括号、多括号这种真坏了的，照样解析失败。
+     */
+    JsonNode readFirstValue(String arguments) {
+        return json.readerFor(JsonNode.class)
+                .without(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                .readValue(arguments);
+    }
+
     private Analysis parse(String arguments) {
         try {
-            return json.treeToValue(unwrapDoubleEncoded(json.readTree(arguments)), Analysis.class);
+            return json.treeToValue(unwrapDoubleEncoded(readFirstValue(arguments)), Analysis.class);
         } catch (JacksonException e) {
             // 带上原因和长度：截断和格式不对是两回事，光说「看不懂」没法排查
             throw new AnalysisFailedException(
