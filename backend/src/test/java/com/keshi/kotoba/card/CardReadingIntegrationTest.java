@@ -118,6 +118,49 @@ class CardReadingIntegrationTest {
     }
 
     @Test
+    @DisplayName("只给指定的卡补读音：别人的、已经有读音的不动，补上的连读音一起返回")
+    void fillsOnlyTheGivenCards() {
+        long dueA = insertWithoutReading("恵まれる", "めぐまれる 自動詞 受到恩惠");
+        long dueB = insertWithoutReading("一緒", "一起");
+        long notAsked = insertWithoutReading("判断", "はんだん");
+        long alreadyRead = cardService.create(userId, null, "食[た]べる", "吃").card().getId();
+        when(engine.annotate(anyString(), eq("一緒"))).thenReturn("一緒[いっしょ]");
+
+        CardService.CardReadings result =
+                cardService.fillReadingsFor(userId, List.of(dueA, dueB, alreadyRead));
+
+        assertEquals(List.of(
+                        new CardService.CardReading(dueA, "めぐまれる"),
+                        new CardService.CardReading(dueB, "いっしょ")),
+                result.readings().stream()
+                        .sorted(java.util.Comparator.comparing(CardService.CardReading::id))
+                        .toList());
+        assertNull(result.modelError());
+        assertNull(readings().get("判断"), "没点名的卡不该被补：" + notAsked);
+    }
+
+    @Test
+    @DisplayName("别人的卡点了名也不补")
+    void ignoresOtherUsersCards() {
+        long mine = insertWithoutReading("判断", "はんだん");
+        long otherUser = jdbc.queryForObject(
+                "INSERT INTO app_user (username, password_hash) VALUES (?, 'x') RETURNING id",
+                Long.class, "it_" + HexFormat.of().toHexDigits(ThreadLocalRandom.current().nextInt()));
+        long theirs = cardService.create(otherUser, null, "理由", "りゆう").card().getId();
+        jdbc.update("UPDATE card SET reading = NULL WHERE id = ?", theirs);
+
+        CardService.CardReadings result = cardService.fillReadingsFor(userId, List.of(mine, theirs));
+
+        assertEquals(List.of(new CardService.CardReading(mine, "はんだん")), result.readings());
+        assertNull(jdbc.queryForObject("SELECT reading FROM card WHERE id = ?", String.class, theirs));
+
+        jdbc.update("DELETE FROM user_card_state WHERE user_id = ?", otherUser);
+        jdbc.update("DELETE FROM card WHERE owner_id = ?", otherUser);
+        jdbc.update("DELETE FROM deck WHERE owner_id = ?", otherUser);
+        jdbc.update("DELETE FROM app_user WHERE id = ?", otherUser);
+    }
+
+    @Test
     @DisplayName("改卡时填的读音存下来；留空就按新正面重新猜")
     void updateTakesUserReading() {
         long id = cardService.create(userId, null, "今日", "今天").card().getId();
@@ -129,9 +172,10 @@ class CardReadingIntegrationTest {
     }
 
     /** 模拟迁移之前就有的卡：reading 是空的。 */
-    private void insertWithoutReading(String front, String back) {
+    private long insertWithoutReading(String front, String back) {
         long id = cardService.create(userId, null, front, back).card().getId();
         jdbc.update("UPDATE card SET reading = NULL WHERE id = ?", id);
+        return id;
     }
 
     private Map<String, String> readings() {

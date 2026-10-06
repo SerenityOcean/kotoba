@@ -187,6 +187,21 @@ export interface ReadingFill {
   modelError: string | null
 }
 
+export interface CardReadings {
+  readings: { id: number; reading: string }[]
+  modelError: string | null
+}
+
+/** 只给指定的卡补读音，一次最多 50 张。复习页开场给到期的卡用。 */
+export async function fillReadingsFor(ids: number[]): Promise<CardReadings> {
+  const res = await apiFetch('/api/cards/readings/fill-cards', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  })
+  return handle<CardReadings>(res)
+}
+
 export async function fillReadings(afterId?: number): Promise<ReadingFill> {
   const query = afterId === undefined ? '' : `?afterId=${afterId}`
   const res = await apiFetch(`/api/cards/readings/fill${query}`, { method: 'POST' })

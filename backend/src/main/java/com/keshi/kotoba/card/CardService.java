@@ -169,20 +169,45 @@ public class CardService {
     }
 
     /**
-     * 给还没读音的卡补读音，一次一批：afterId 之后的最多 limit 张。
-     *
-     * <p>先用确定的规则（正面注音、背面开头的假名），规则猜不出来的
-     * 攒成一批问一次模型。不开事务：等模型的几秒里不该占着数据库连接，
-     * 存的时候 saveAll 自己有事务。
-     *
-     * <p>模型不可用或者这批失败了，规则那部分照样存，失败原因放在结果里 ——
-     * 前端可以接着往后翻，不至于卡在一批上。
+     * 给还没读音的卡补读音，一次一批：afterId 之后的最多 limit 张。卡片页「补读音」用，
+     * 前端拿 nextAfterId 接着翻，直到翻完。
      */
     public ReadingFill fillReadings(Long userId, Long afterId, int limit) {
         int size = Math.clamp(limit, 1, MAX_FILL_BATCH);
         List<Card> batch = cardRepository.findByOwnerIdAndReadingIsNullAndIdGreaterThanOrderByIdAsc(
                 userId, afterId == null ? 0L : afterId, PageRequest.of(0, size));
 
+        FillOutcome outcome = fill(batch);
+        Long lastId = batch.size() < size ? null : batch.getLast().getId();
+        return new ReadingFill(outcome.byRule(), outcome.byModel(), outcome.missed(), lastId, outcome.modelError());
+    }
+
+    /**
+     * 只给指定的几张卡补读音 —— 复习页开场时给到期的卡补，不用先去卡片页点按钮。
+     * 不是自己的、已经有读音的直接跳过。返回补上的那些卡的读音。
+     */
+    public CardReadings fillReadingsFor(Long userId, List<Long> cardIds) {
+        List<Card> batch = cardRepository.findAllById(cardIds.stream().limit(MAX_FILL_BATCH).toList())
+                .stream()
+                .filter(c -> c.getOwnerId().equals(userId) && c.getReading() == null)
+                .toList();
+
+        FillOutcome outcome = fill(batch);
+        List<CardReading> readings = batch.stream()
+                .filter(c -> c.getReading() != null)
+                .map(c -> new CardReading(c.getId(), c.getReading()))
+                .toList();
+        return new CardReadings(readings, outcome.modelError());
+    }
+
+    /**
+     * 补一批：先用确定的规则（正面注音、背面开头的假名），规则猜不出来的
+     * 攒成一批问一次模型。不开事务：等模型的几秒里不该占着数据库连接，
+     * 存的时候 saveAll 自己有事务。
+     *
+     * <p>模型不可用或者这批失败了，规则那部分照样存，失败原因放在结果里。
+     */
+    private FillOutcome fill(List<Card> batch) {
         int byRule = 0;
         Map<String, List<Card>> forModel = new LinkedHashMap<>();
         for (Card card : batch) {
@@ -217,10 +242,11 @@ public class CardService {
 
         cardRepository.saveAll(batch.stream().filter(c -> c.getReading() != null).toList());
 
-        int filled = byRule + byModel;
         int asked = (int) batch.stream().filter(c -> Readings.wanted(c.getFront())).count();
-        Long lastId = batch.size() < size ? null : batch.getLast().getId();
-        return new ReadingFill(byRule, byModel, asked - filled, lastId, modelError);
+        return new FillOutcome(byRule, byModel, asked - byRule - byModel, modelError);
+    }
+
+    private record FillOutcome(int byRule, int byModel, int missed, String modelError) {
     }
 
     /**
@@ -257,6 +283,18 @@ public class CardService {
      * @param modelError 模型那一步失败的原因，没问模型或者成功了是 null
      */
     public record ReadingFill(int byRule, int byModel, int missed, Long nextAfterId, String modelError) {
+    }
+
+    public record CardReading(Long id, String reading) {
+    }
+
+    /**
+     * 指定卡片补读音的结果。
+     *
+     * @param readings   补上了的卡和它们的读音
+     * @param modelError 模型那一步失败的原因，没问模型或者成功了是 null
+     */
+    public record CardReadings(List<CardReading> readings, String modelError) {
     }
 
     /** 删包连卡片一起删 —— 包是卡片的容器，空留一个壳没意义。 */

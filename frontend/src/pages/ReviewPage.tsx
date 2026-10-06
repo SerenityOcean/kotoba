@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { fetchDecks, fetchDueCards, reviewCard } from '../api'
+import { fetchDecks, fetchDueCards, fillReadingsFor, reviewCard } from '../api'
 import Furigana from '../components/Furigana'
 import type { Card, Rating } from '../api'
 import { closestReading, finishKana, isCorrect, markMistakes, romajiToKana } from '../kana'
@@ -56,6 +56,10 @@ export default function ReviewPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deckName, setDeckName] = useState<string | null>(null)
+  // 开场给没读音的到期卡补读音：进行中 / 模型那边的失败原因
+  const [filling, setFilling] = useState(false)
+  const [fillError, setFillError] = useState<string | null>(null)
+  const fillStarted = useRef(false)
   const navigate = useNavigate()
 
   // ?deck=3 表示只复习这个包，不带就是全部
@@ -75,12 +79,40 @@ export default function ReviewPage() {
     setRetryWrong(false)
   }, [])
 
+  /**
+   * 到期的卡里还没读音的，按复习顺序一批批补上，补到一张换一张 ——
+   * 不用先去卡片页点「补读音」。一次打开页面只做一次。
+   */
+  const fillMissing = useCallback(async (cards: Card[]) => {
+    const ids = cards.filter((c) => c.readingMissing).map((c) => c.id)
+    if (ids.length === 0 || fillStarted.current) return
+    fillStarted.current = true
+    setFilling(true)
+    try {
+      for (let i = 0; i < ids.length; i += 50) {
+        const result = await fillReadingsFor(ids.slice(i, i + 50))
+        const found = new Map(result.readings.map((r) => [r.id, r.reading]))
+        setQueue((q) =>
+          q.map((c) =>
+            found.has(c.id) ? { ...c, reading: found.get(c.id)!, readingMissing: false } : c,
+          ),
+        )
+        if (result.modelError) setFillError(result.modelError)
+      }
+    } catch (e) {
+      setFillError(e instanceof Error ? e.message : '补读音失败')
+    } finally {
+      setFilling(false)
+    }
+  }, [])
+
   useEffect(() => {
     fetchDueCards(deckId)
       .then((cards) => {
         setQueue(cards)
         setIndex(0)
         startCard(cards[0], loadMode())
+        if (loadMode() === 'type') fillMissing(cards)
       })
       .catch((e) => setError(e instanceof Error ? e.message : '加载失败'))
       .finally(() => setLoading(false))
@@ -91,9 +123,15 @@ export default function ReviewPage() {
         .then((decks) => setDeckName(decks.find((d) => d.id === deckId)?.name ?? null))
         .catch(() => setDeckName(null))
     }
-  }, [deckId, startCard])
+  }, [deckId, startCard, fillMissing])
 
   const current = queue[index]
+
+  // 正在看的这张刚补上读音（开场时还没有），从翻卡换成打字。
+  // 只在还没翻开时换；已经点了「显示答案」就让它翻完
+  if (mode === 'type' && current?.reading && phase === 'hidden') {
+    setPhase('answer')
+  }
 
   const handleRate = useCallback(
     async (rating: Rating) => {
@@ -146,6 +184,7 @@ export default function ReviewPage() {
     saveMode(next)
     setMode(next)
     startCard(current, next)
+    if (next === 'type') fillMissing(queue.slice(index))
   }
 
   // 全局快捷键只管翻卡和评分；输入框里的按键归输入框自己处理
@@ -273,7 +312,15 @@ export default function ReviewPage() {
         )}
 
         {mode === 'type' && !current.reading && phase === 'hidden' && (
-          <p className="mt-6 text-xs text-hai">这张没有读音，翻卡就好</p>
+          <p className="mt-6 text-xs text-hai">
+            {!current.readingMissing
+              ? '这张不考读音，翻卡就好'
+              : filling
+                ? '正在查这张的读音…'
+                : fillError
+                  ? `没查到读音（${fillError}），这张先翻卡`
+                  : '没查到这张的读音，先翻卡；可以在卡片页「编辑」里填'}
+          </p>
         )}
       </div>
 
