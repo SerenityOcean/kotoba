@@ -3,6 +3,10 @@ export interface Card {
   deckId: number
   front: string
   back: string | null
+  /** 读音，打字复习时对答案用。几个读音用 ／ 隔开；null = 不考读音 */
+  reading: string | null
+  /** 值得考读音、但还没有读音 */
+  readingMissing: boolean
   dueAt: string
   intervalDays: number
   repetitions: number
@@ -144,13 +148,35 @@ export async function createCard(front: string, back: string, deckId?: number): 
   return handle<Card>(res)
 }
 
-export async function updateCard(id: number, front: string, back: string): Promise<Card> {
+/** reading 留空，后端就按正反面重新猜。 */
+export async function updateCard(
+  id: number,
+  front: string,
+  back: string,
+  reading: string,
+): Promise<Card> {
   const res = await apiFetch(`/api/cards/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ front, back }),
+    body: JSON.stringify({ front, back, reading }),
   })
   return handle<Card>(res)
+}
+
+/** 补读音一批的结果。nextAfterId 是 null 就翻完了。 */
+export interface ReadingFill {
+  byRule: number
+  byModel: number
+  missed: number
+  nextAfterId: number | null
+  /** 模型那一步失败的原因，规则那部分照样存了 */
+  modelError: string | null
+}
+
+export async function fillReadings(afterId?: number): Promise<ReadingFill> {
+  const query = afterId === undefined ? '' : `?afterId=${afterId}`
+  const res = await apiFetch(`/api/cards/readings/fill${query}`, { method: 'POST' })
+  return handle<ReadingFill>(res)
 }
 
 export async function deleteCard(id: number): Promise<void> {

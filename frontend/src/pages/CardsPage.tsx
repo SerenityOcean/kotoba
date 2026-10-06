@@ -3,6 +3,7 @@ import {
   createCard,
   deleteCard,
   fetchCards,
+  fillReadings,
   fetchDecks,
   importCards,
   parseImportText,
@@ -10,6 +11,7 @@ import {
 } from '../api'
 import type { Card, Deck, ImportResult } from '../api'
 import AnkiImport from '../components/AnkiImport'
+import { romajiToKana } from '../kana'
 import Furigana from '../components/Furigana'
 import DeckBar from '../components/DeckBar'
 import Pagination from '../components/Pagination'
@@ -48,6 +50,10 @@ export default function CardsPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editFront, setEditFront] = useState('')
   const [editBack, setEditBack] = useState('')
+  const [editReading, setEditReading] = useState('')
+  // 补读音：进行中时是已补张数，补完后换成一句结果
+  const [filling, setFilling] = useState<number | null>(null)
+  const [fillNote, setFillNote] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -87,6 +93,40 @@ export default function CardsPage() {
     }
   }
 
+  /**
+   * 给还没读音的卡补读音。后端一次只做一批（规则先猜，剩下的问一次模型），
+   * 这边接着往后翻，直到翻完 —— 几百张卡一个请求做完要等一两分钟，会超时。
+   */
+  async function handleFillReadings() {
+    setFilling(0)
+    setFillNote(null)
+    let filled = 0
+    let missed = 0
+    let modelError: string | null = null
+    try {
+      let afterId: number | undefined
+      do {
+        const batch = await fillReadings(afterId)
+        filled += batch.byRule + batch.byModel
+        missed += batch.missed
+        modelError = batch.modelError ?? modelError
+        setFilling(filled)
+        afterId = batch.nextAfterId ?? undefined
+      } while (afterId !== undefined)
+
+      setFillNote(
+        `补上了 ${filled} 张` +
+          (missed > 0 ? `，${missed} 张没补上，可以点「编辑」手动填` : '') +
+          (modelError ? `（模型出错：${modelError}）` : ''),
+      )
+      await load()
+    } catch (e) {
+      setFillNote(e instanceof Error ? `补读音失败：${e.message}` : '补读音失败')
+    } finally {
+      setFilling(null)
+    }
+  }
+
   async function handleDelete(id: number) {
     try {
       setConfirmingId(null)
@@ -102,6 +142,7 @@ export default function CardsPage() {
     setEditingId(card.id)
     setEditFront(card.front)
     setEditBack(card.back ?? '')
+    setEditReading(card.reading ?? '')
     setError(null)
   }
 
@@ -109,6 +150,7 @@ export default function CardsPage() {
     setEditingId(null)
     setEditFront('')
     setEditBack('')
+    setEditReading('')
   }
 
   async function saveEdit(id: number) {
@@ -117,7 +159,7 @@ export default function CardsPage() {
       return
     }
     try {
-      await updateCard(id, editFront, editBack)
+      await updateCard(id, editFront, editBack, editReading)
       cancelEdit()
       await load()
     } catch (e) {
@@ -145,6 +187,8 @@ export default function CardsPage() {
     setDeckId(id)
     setPage(1)
   }
+
+  const missingReadings = cards.filter((c) => c.readingMissing).length
 
   const parsed = parseImportText(importText)
 
@@ -279,6 +323,31 @@ export default function CardsPage() {
         {error && <p className="mt-3 text-sm text-shu">{error}</p>}
       </section>
 
+      {(missingReadings > 0 || filling !== null || fillNote) && (
+        <p className="mb-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs text-hai">
+          {filling !== null ? (
+            <span>补读音中… 已补 {filling} 张</span>
+          ) : (
+            <>
+              {fillNote && <span className="text-sumi">{fillNote}</span>}
+              {missingReadings > 0 && (
+                <>
+                  <span>
+                    {missingReadings} 张卡还没有读音，打字复习时会改成翻卡
+                  </span>
+                  <button
+                    onClick={handleFillReadings}
+                    className="text-ai transition hover:underline"
+                  >
+                    补读音
+                  </button>
+                </>
+              )}
+            </>
+          )}
+        </p>
+      )}
+
       {cards.length > 0 && (
         <div ref={listTop} className="flex scroll-mt-4 items-baseline gap-4 border-b border-usu pb-2">
           <input
@@ -334,6 +403,28 @@ export default function CardsPage() {
                       if (e.key === 'Escape') cancelEdit()
                     }}
                     className="flex-1 border-b border-ai bg-transparent pb-1 text-base focus:outline-none"
+                  />
+                  {/* 读音：罗马字自动转假名，几个读音用 / 隔开；留空让后端重新猜 */}
+                  <input
+                    value={editReading}
+                    onChange={(e) =>
+                      setEditReading(
+                        (e.nativeEvent as InputEvent).isComposing
+                          ? e.target.value
+                          : romajiToKana(e.target.value),
+                      )
+                    }
+                    onKeyDown={(e) => {
+                      if (e.nativeEvent.isComposing || e.keyCode === 229) return
+                      if (e.key === 'Enter') saveEdit(card.id)
+                      if (e.key === 'Escape') cancelEdit()
+                    }}
+                    placeholder="读音"
+                    lang="ja"
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    className="border-b border-ai bg-transparent pb-1 font-mincho text-base placeholder:font-ui placeholder:text-xs placeholder:text-hai/40 focus:outline-none sm:w-32"
                   />
                   <div className="flex gap-2">
                     <button

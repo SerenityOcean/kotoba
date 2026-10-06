@@ -28,6 +28,11 @@ public final class FuriganaNotation {
         return RUBY.matcher(annotated).replaceAll("$1");
     }
 
+    /** 汉字换成它的注音：{@code 食[た]べる} → {@code たべる}。没注音的汉字原样留着。 */
+    public static String reading(String annotated) {
+        return RUBY.matcher(annotated).replaceAll("$2");
+    }
+
     /** 「価値（かち）」→「価値[かち]」。只认汉字打头、括号里全是假名的。 */
     public static String bracketize(String text) {
         return PAREN_READING.matcher(text).replaceAll("$1[$2]");

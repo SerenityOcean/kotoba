@@ -16,7 +16,8 @@
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.2",
     "sql.js": "^1.14.2",
-    "tailwindcss": "^4.3.3"
+    "tailwindcss": "^4.3.3",
+    "wanakana": "^5.3.1"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
