@@ -81,6 +81,13 @@ public class CardController {
         return cardService.fillReadings(user.id(), afterId, limit);
     }
 
+    /** 给指定的卡补读音（复习页给到期的卡用），一次最多 50 张。 */
+    @PostMapping("/readings/fill-cards")
+    public CardService.CardReadings fillReadingsFor(@AuthenticationPrincipal AppUserPrincipal user,
+                                                    @Valid @RequestBody FillCardsRequest request) {
+        return cardService.fillReadingsFor(user.id(), request.ids());
+    }
+
     @PostMapping("/{id}/review")
     public CardResponse review(@AuthenticationPrincipal AppUserPrincipal user,
                                @PathVariable Long id,
