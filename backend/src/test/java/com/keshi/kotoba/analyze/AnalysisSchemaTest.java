@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AnalysisSchemaTest {
 
     @Test
-    @DisplayName("schema 覆盖到四层结构和字段说明")
+    @DisplayName("schema 覆盖到每层结构和字段说明")
     void schemaCoversNestedRecords() {
         String schema = AnalysisSchema.asJson();
         System.out.println("=== 生成的 schema ===");
@@ -21,7 +21,8 @@ class AnalysisSchemaTest {
         for (String field : new String[]{
                 "sentences", "original", "translation", "verbs", "grammarPoints",
                 "surface", "dictionaryForm", "reading", "form", "explanation", "meaning",
-                "pattern", "example"}) {
+                "pattern", "example", "transitivity", "usage",
+                "loanwords", "english", "origin"}) {
             assertTrue(schema.contains("\"" + field + "\""), "schema 里缺字段：" + field);
         }
 
@@ -31,5 +32,6 @@ class AnalysisSchemaTest {
         // record 表达不了必填，是后处理加上去的 —— 掉了模型就能合法地少给字段
         assertTrue(schema.contains("\"required\":[\"sentences\"]"), "顶层 required 没加上");
         assertTrue(schema.contains("\"dictionaryForm\",\"explanation\""), "动词那层 required 没加上");
+        assertTrue(schema.contains("\"english\",\"meaning\",\"origin\""), "外来语那层 required 没加上");
     }
 }
