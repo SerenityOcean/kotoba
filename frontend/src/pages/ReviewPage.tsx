@@ -5,7 +5,9 @@ import Furigana from '../components/Furigana'
 import type { Card, Rating } from '../api'
 import { closestReading, finishKana, isCorrect, markMistakes, romajiToKana } from '../kana'
 import { stripFurigana } from '../reading'
-import { loadSoundOn, playKey, saveSoundOn, soundFor } from '../sound'
+import { loadSoundPreset, playKey, saveSoundPreset, soundFor } from '../sound'
+import type { SoundPreset } from '../sound'
+import SoundPicker from '../components/SoundPicker'
 
 type Mode = 'type' | 'flip'
 
@@ -46,7 +48,8 @@ export default function ReviewPage() {
   const [queue, setQueue] = useState<Card[]>([])
   const [index, setIndex] = useState(0)
   const [mode, setMode] = useState<Mode>(loadMode)
-  const [soundOn, setSoundOn] = useState(loadSoundOn)
+  // 打字音的音色，null = 关
+  const [sound, setSound] = useState<SoundPreset | null>(loadSoundPreset)
   const [phase, setPhase] = useState<Phase>('hidden')
   const [typed, setTyped] = useState('')
   // 第一次答错时写的是什么，答案旁边对比着显示
@@ -190,7 +193,11 @@ export default function ReviewPage() {
   // 全局快捷键只管翻卡和评分；输入框里的按键归输入框自己处理
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (!current || e.target instanceof HTMLInputElement) return
+      // 输入框里的按键归输入框；在声音菜单里按的键也别拿来评分
+      const target = e.target as HTMLElement
+      if (!current || target instanceof HTMLInputElement || target.closest?.('[data-sound-picker]')) {
+        return
+      }
 
       if (phase === 'hidden') {
         if (e.key === ' ' || e.key === 'Enter') {
@@ -252,20 +259,13 @@ export default function ReviewPage() {
           />
         </div>
         {mode === 'type' && (
-          <button
-            onClick={() => {
-              saveSoundOn(!soundOn)
-              setSoundOn(!soundOn)
+          <SoundPicker
+            value={sound}
+            onChange={(preset) => {
+              saveSoundPreset(preset)
+              setSound(preset)
             }}
-            aria-label="按键声"
-            aria-pressed={soundOn}
-            title={soundOn ? '打字时有按键声，点一下关掉' : '打字时没有声音，点一下打开'}
-            className={`text-xs transition hover:text-sumi ${
-              soundOn ? 'text-hai' : 'text-hai/50 line-through'
-            }`}
-          >
-            声音
-          </button>
+          />
         )}
         <ModeToggle mode={mode} onChange={switchMode} />
         <button
@@ -334,7 +334,7 @@ export default function ReviewPage() {
           }}
           onSubmit={submit}
           onGiveUp={phase === 'answer' ? giveUp : undefined}
-          sound={soundOn}
+          sound={sound}
           placeholder={phase === 'answer' ? '输入读音，罗马字会自动变成假名' : '照着答案打一遍才能继续'}
           hint={
             phase === 'wrong'
@@ -404,8 +404,8 @@ function AnswerInput({
   onGiveUp?: () => void
   placeholder: string
   hint?: string
-  /** 打字时出按键声 */
-  sound: boolean
+  /** 打字音的音色，null = 不出声 */
+  sound: SoundPreset | null
 }) {
   return (
     <div className="mx-auto max-w-sm text-center">
@@ -420,7 +420,7 @@ function AnswerInput({
           // 出声放在最前面：输入法选字时的按键也是在打字
           if (sound) {
             const kind = soundFor(e)
-            if (kind) playKey(kind)
+            if (kind) playKey(sound, kind)
           }
           if (e.nativeEvent.isComposing || e.keyCode === 229) return
           if (e.key === 'Enter') {
