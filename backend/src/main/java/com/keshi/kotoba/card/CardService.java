@@ -7,12 +7,13 @@ import com.keshi.kotoba.analyze.FuriganaService;
 import com.keshi.kotoba.deck.Deck;
 import com.keshi.kotoba.deck.DeckService;
 import com.keshi.kotoba.text.FuriganaNotation;
+import com.keshi.kotoba.web.Zones;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -31,6 +32,7 @@ public class CardService {
     private final ReviewLogRepository reviewLogRepository;
     private final DeckService deckService;
     private final FuriganaService furiganaService;
+    private final StudyPlan studyPlan;
 
     /** 补读音一批最多这么多张。一批问一次模型，几十个短词几秒钟就回来。 */
     static final int MAX_FILL_BATCH = 50;
@@ -39,12 +41,14 @@ public class CardService {
                        UserCardStateRepository stateRepository,
                        ReviewLogRepository reviewLogRepository,
                        DeckService deckService,
-                       FuriganaService furiganaService) {
+                       FuriganaService furiganaService,
+                       StudyPlan studyPlan) {
         this.cardRepository = cardRepository;
         this.stateRepository = stateRepository;
         this.reviewLogRepository = reviewLogRepository;
         this.deckService = deckService;
         this.furiganaService = furiganaService;
+        this.studyPlan = studyPlan;
     }
 
     /** deckId 为 null 表示不限包。 */
@@ -63,20 +67,30 @@ public class CardService {
                 .toList();
     }
 
+    /**
+     * 这一轮要复习的卡：到期的旧卡全部，加上今天还能放出的新卡。
+     * 旧卡在前（按到期时间），新卡在后（按建卡先后）—— 先还旧账再学新的。
+     *
+     * @param extraNew 「再来几张」额外要的新卡数
+     */
     @Transactional(readOnly = true)
-    public List<CardWithState> findDue(Long userId, Long deckId, Instant now) {
+    public List<CardWithState> findDue(Long userId, Long deckId, Instant now, ZoneId zone, int extraNew) {
         // 先查状态表（排序条件在这边），再按 id 捞回卡片内容
         List<UserCardState> dueStates = deckId == null
                 ? stateRepository.findByUserIdAndDueAtLessThanEqualOrderByDueAtAsc(userId, now)
                 : stateRepository.findDueByDeck(userId, deckService.get(userId, deckId).getId(), now);
 
-        List<Long> cardIds = dueStates.stream().map(UserCardState::getCardId).toList();
+        long allowance = studyPlan.newAllowance(userId, now, zone, extraNew);
+        List<UserCardState> chosen = new ArrayList<>(dueStates.stream().filter(s -> !s.isNew()).toList());
+        dueStates.stream().filter(UserCardState::isNew).limit(allowance).forEach(chosen::add);
+
+        List<Long> cardIds = chosen.stream().map(UserCardState::getCardId).toList();
         Map<Long, Card> byId = cardRepository.findAllById(cardIds).stream()
                 .collect(Collectors.toMap(Card::getId, Function.identity()));
 
-        // 遍历 dueStates 而不是 byId，保住 dueAt 升序
-        return dueStates.stream()
-                .map(s -> new CardWithState(byId.get(s.getCardId()), s))
+        // 遍历 chosen 而不是 byId，保住上面排好的顺序
+        return chosen.stream()
+                .map(st -> new CardWithState(byId.get(st.getCardId()), st))
                 .toList();
     }
 
@@ -313,33 +327,56 @@ public class CardService {
 
     /** 每个包的卡片数和到期数，列表页一次算完。 */
     @Transactional(readOnly = true)
-    public Map<Long, DeckCounts> countsByDeck(Long userId, Instant now) {
+    public Map<Long, DeckCounts> countsByDeck(Long userId, Instant now, ZoneId zone) {
         Map<Long, DeckCounts> result = new HashMap<>();
 
         for (DeckCount row : cardRepository.countByDeck(userId)) {
             result.put(row.getDeckId(), new DeckCounts(row.getCount(), 0));
         }
+        // 到期数 = 到期的旧卡 + 这个包里的新卡（最多放到今天的名额）—— 和点进去复习时看到的一样多
+        long allowance = studyPlan.newAllowance(userId, now, zone, 0);
+        Map<Long, Long> newDue = new HashMap<>();
+        for (DeckCount row : stateRepository.countDueNewByDeck(userId, now)) {
+            newDue.put(row.getDeckId(), row.getCount());
+        }
         for (DeckCount row : stateRepository.countDueByDeck(userId, now)) {
+            long fresh = newDue.getOrDefault(row.getDeckId(), 0L);
+            long due = row.getCount() - fresh + Math.min(fresh, allowance);
             DeckCounts current = result.getOrDefault(row.getDeckId(), new DeckCounts(0, 0));
-            result.put(row.getDeckId(), new DeckCounts(current.cards(), row.getCount()));
+            result.put(row.getDeckId(), new DeckCounts(current.cards(), due));
         }
         return result;
     }
 
     @Transactional(readOnly = true)
-    public Stats stats(Long userId, Instant now) {
+    public Stats stats(Long userId, Instant now, ZoneId zone) {
         long total = cardRepository.countByOwnerId(userId);
-        long due = stateRepository.countByUserIdAndDueAtLessThanEqual(userId, now);
+        long dueAll = stateRepository.countByUserIdAndDueAtLessThanEqual(userId, now);
+        long newWaiting = stateRepository.countDueNew(userId, now);
+        long newToday = Math.min(newWaiting, studyPlan.newAllowance(userId, now, zone, 0));
+        long dueReviews = dueAll - newWaiting;
         long reviewedToday = reviewLogRepository.countByUserIdAndReviewedAtGreaterThanEqual(
-                userId, now.truncatedTo(ChronoUnit.DAYS));
-        return new Stats(total, due, reviewedToday);
+                userId, Zones.startOfDay(now, zone));
+        return new Stats(total, dueReviews + newToday, reviewedToday,
+                dueReviews, newToday, newWaiting,
+                studyPlan.learnedToday(userId, now, zone), studyPlan.dailyNewLimit(userId));
     }
 
     /** 卡片内容 + 当前用户在它上面的进度。HTTP 层要把两者拼成一个响应。 */
     public record CardWithState(Card card, UserCardState state) {
     }
 
-    public record Stats(long totalCards, long dueToday, long reviewedToday) {
+    /**
+     * @param dueToday      这一轮要复习的总数 = dueReviews + newToday
+     * @param dueReviews    到期的旧卡
+     * @param newToday      今天还能放出的新卡
+     * @param newWaiting    所有还没学过的卡（等着被放出来的）
+     * @param learnedToday  今天已经学了几张新卡
+     * @param dailyNewLimit 每天新卡上限，null = 不限
+     */
+    public record Stats(long totalCards, long dueToday, long reviewedToday,
+                        long dueReviews, long newToday, long newWaiting,
+                        long learnedToday, Integer dailyNewLimit) {
     }
 
     public record DeckCounts(long cards, long due) {

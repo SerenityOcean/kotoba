@@ -102,6 +102,11 @@ public class UserCardState {
         return newInterval;
     }
 
+    /** 从没复习过：没答对过，也没答错过。每天放出多少张受 {@link StudyPlan} 限制。 */
+    public boolean isNew() {
+        return repetitions == 0 && lapses == 0;
+    }
+
     public Long getId() {
         return id;
     }

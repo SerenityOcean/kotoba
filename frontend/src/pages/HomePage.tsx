@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchDecks, fetchStats } from '../api'
+import { fetchDecks, fetchStats, saveDailyNewLimit } from '../api'
 import type { Deck, Stats } from '../api'
 import { QUOTES } from '../quotes'
 
@@ -10,13 +10,17 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null)
   const navigate = useNavigate()
 
-  useEffect(() => {
-    Promise.all([fetchStats(), fetchDecks()])
+  function load() {
+    return Promise.all([fetchStats(), fetchDecks()])
       .then(([nextStats, nextDecks]) => {
         setStats(nextStats)
         setDecks(nextDecks)
       })
       .catch((e) => setError(e instanceof Error ? e.message : '加载失败'))
+  }
+
+  useEffect(() => {
+    load()
   }, [])
 
   if (error) return <p className="text-sm text-shu">{error}</p>
@@ -30,6 +34,15 @@ export default function HomePage() {
           <Stat label="今日已复习" value={stats.reviewedToday} />
           <Stat label="总卡片" value={stats.totalCards} />
         </div>
+        {stats.totalCards > 0 && (
+          <DailyNew
+            stats={stats}
+            onSave={async (limit) => {
+              await saveDailyNewLimit(limit)
+              await load()
+            }}
+          />
+        )}
       </section>
 
       <QuoteBoard />
@@ -82,6 +95,117 @@ export default function HomePage() {
           </ul>
         </section>
       )}
+    </div>
+  )
+}
+
+/**
+ * 待复习下面那行：其中旧卡几张、新词几张，以及每天学多少新词（点数字就能改）。
+ *
+ * 旧卡不限量，到期了就该复习；限的是新卡往里放的速度 —— 不然导入一个
+ * 200 张的包，当天待复习就是 200。
+ */
+function DailyNew({
+  stats,
+  onSave,
+}: {
+  stats: Stats
+  onSave: (limit: number | null) => Promise<void>
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const limit = stats.dailyNewLimit
+  // 名额用完之后还在排队的新卡
+  const queued = stats.newWaiting - stats.newToday
+
+  async function save(value: number | null) {
+    if (value !== null && (!Number.isInteger(value) || value < 0 || value > 500)) {
+      setError('填 0～500 之间的整数')
+      return
+    }
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave(value)
+      setEditing(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '保存失败')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="mt-4 text-xs text-hai">
+      <p className="flex flex-wrap items-baseline gap-x-4 gap-y-1.5">
+        {stats.dueToday > 0 && (
+          <span>
+            其中旧卡 <span className="tabular-nums text-sumi">{stats.dueReviews}</span>
+            ，新词 <span className="tabular-nums text-sumi">{stats.newToday}</span>
+          </span>
+        )}
+        {!editing ? (
+          <span>
+            每天学{' '}
+            <button
+              onClick={() => {
+                setDraft(limit === null ? '' : String(limit))
+                setEditing(true)
+              }}
+              title="改每天的新词数"
+              aria-label={`每天学 ${limit === null ? '不限' : `${limit} 个`}新词，点击修改`}
+              className="border-b border-dashed border-hai/60 tabular-nums text-sumi transition hover:border-ai hover:text-ai"
+            >
+              {limit === null ? '不限' : limit}
+            </button>{' '}
+            {limit === null ? '' : '个'}新词，今天已学{' '}
+            <span className="tabular-nums text-sumi">{stats.learnedToday}</span>
+          </span>
+        ) : (
+          <span className="flex flex-wrap items-baseline gap-2">
+            每天学
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') save(draft === '' ? null : Number(draft))
+                if (e.key === 'Escape') setEditing(false)
+              }}
+              inputMode="numeric"
+              autoFocus
+              placeholder="20"
+              aria-label="每天新词数"
+              className="w-12 border-b border-ai bg-transparent text-center text-sm tabular-nums text-sumi focus:outline-none"
+            />
+            个新词
+            <button
+              onClick={() => save(draft === '' ? null : Number(draft))}
+              disabled={saving}
+              className="rounded-sm bg-ai px-2.5 py-0.5 text-washi transition hover:opacity-85 disabled:opacity-30"
+            >
+              保存
+            </button>
+            <button
+              onClick={() => save(null)}
+              disabled={saving}
+              className="transition hover:text-sumi"
+            >
+              不限
+            </button>
+            <button onClick={() => setEditing(false)} className="transition hover:text-sumi">
+              取消
+            </button>
+          </span>
+        )}
+        {queued > 0 && !editing && <span>还有 {queued} 张新卡在排队</span>}
+      </p>
+      {editing && (
+        <p className="mt-1.5 text-hai/80">设成 0 就只复习旧卡；到期的旧卡不受这个数限制</p>
+      )}
+      {error && <p className="mt-1.5 text-shu">{error}</p>}
     </div>
   )
 }

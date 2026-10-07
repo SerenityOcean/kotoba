@@ -19,6 +19,11 @@ public interface UserCardStateRepository extends JpaRepository<UserCardState, Lo
 
     long countByUserIdAndDueAtLessThanEqual(Long userId, Instant time);
 
+    /** 到期的新卡（从没复习过的）有几张。 */
+    @Query("select count(s) from UserCardState s "
+            + "where s.userId = :userId and s.dueAt <= :time and s.repetitions = 0 and s.lapses = 0")
+    long countDueNew(@Param("userId") Long userId, @Param("time") Instant time);
+
     void deleteByCardId(Long cardId);
 
     void deleteByCardIdIn(Collection<Long> cardIds);
@@ -35,4 +40,11 @@ public interface UserCardStateRepository extends JpaRepository<UserCardState, Lo
             + "join Card c on c.id = s.cardId "
             + "where s.userId = :userId and s.dueAt <= :time group by c.deckId")
     List<DeckCount> countDueByDeck(@Param("userId") Long userId, @Param("time") Instant time);
+
+    /** 每个包里到期的新卡有几张 —— 包列表上的「复习 N」要按每天新卡上限折算。 */
+    @Query("select c.deckId as deckId, count(s) as count from UserCardState s "
+            + "join Card c on c.id = s.cardId "
+            + "where s.userId = :userId and s.dueAt <= :time and s.repetitions = 0 and s.lapses = 0 "
+            + "group by c.deckId")
+    List<DeckCount> countDueNewByDeck(@Param("userId") Long userId, @Param("time") Instant time);
 }

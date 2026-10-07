@@ -3,6 +3,7 @@ package com.keshi.kotoba.deck;
 import com.keshi.kotoba.auth.AppUserPrincipal;
 import com.keshi.kotoba.card.CardService;
 import com.keshi.kotoba.web.ApiError;
+import com.keshi.kotoba.web.Zones;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -16,10 +17,12 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 
@@ -38,8 +41,11 @@ public class DeckController {
     }
 
     @GetMapping
-    public List<DeckResponse> list(@AuthenticationPrincipal AppUserPrincipal user) {
-        Map<Long, CardService.DeckCounts> counts = cardService.countsByDeck(user.id(), Instant.now());
+    /** tz 是浏览器时区：「复习 N」里的新卡按今天的名额折算，「今天」从那里的零点算。 */
+    public List<DeckResponse> list(@AuthenticationPrincipal AppUserPrincipal user,
+                                   @RequestParam(required = false) String tz) {
+        Map<Long, CardService.DeckCounts> counts =
+                cardService.countsByDeck(user.id(), Instant.now(), Zones.orUtc(tz));
 
         return deckService.list(user.id()).stream()
                 .map(deck -> {
@@ -61,7 +67,7 @@ public class DeckController {
                                @PathVariable Long id,
                                @Valid @RequestBody DeckRequest request) {
         Deck deck = deckService.rename(user.id(), id, request.name());
-        CardService.DeckCounts counts = cardService.countsByDeck(user.id(), Instant.now())
+        CardService.DeckCounts counts = cardService.countsByDeck(user.id(), Instant.now(), ZoneOffset.UTC)
                 .getOrDefault(deck.getId(), EMPTY);
         return DeckResponse.from(deck, counts.cards(), counts.due());
     }

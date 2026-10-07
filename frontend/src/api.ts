@@ -19,8 +19,23 @@ export type Rating = 'AGAIN' | 'HARD' | 'GOOD'
 
 export interface Stats {
   totalCards: number
+  /** 这一轮要复习的总数 = 到期旧卡 + 今天还能放的新卡 */
   dueToday: number
   reviewedToday: number
+  dueReviews: number
+  /** 今天还能放出的新卡 */
+  newToday: number
+  /** 所有还没学过、等着被放出来的卡 */
+  newWaiting: number
+  /** 今天已经学了几张新卡 */
+  learnedToday: number
+  /** 每天新卡上限，null = 不限 */
+  dailyNewLimit: number | null
+}
+
+/** 浏览器所在的时区。「今天」都从这里的零点算，和服务器在哪儿无关。 */
+function browserZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone
 }
 
 export interface ImportResult {
@@ -148,9 +163,26 @@ export async function fetchCards(deckId?: number): Promise<Card[]> {
   return handle<Card[]>(res)
 }
 
-export async function fetchDueCards(deckId?: number): Promise<Card[]> {
-  const res = await apiFetch(deckId ? `/api/cards/due?deckId=${deckId}` : '/api/cards/due')
+/**
+ * 这一轮要复习的卡：到期的旧卡全部 + 今天名额内的新卡。
+ * extraNew 是今天名额用完后「再来几张」。
+ */
+export async function fetchDueCards(deckId?: number, extraNew = 0): Promise<Card[]> {
+  const params = new URLSearchParams({ tz: browserZone() })
+  if (deckId) params.set('deckId', String(deckId))
+  if (extraNew > 0) params.set('extraNew', String(extraNew))
+  const res = await apiFetch(`/api/cards/due?${params}`)
   return handle<Card[]>(res)
+}
+
+/** null = 不限 */
+export async function saveDailyNewLimit(limit: number | null): Promise<number | null> {
+  const res = await apiFetch('/api/study-settings', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ dailyNewLimit: limit }),
+  })
+  return (await handle<{ dailyNewLimit: number | null }>(res)).dailyNewLimit
 }
 
 export async function createCard(front: string, back: string, deckId?: number): Promise<Card> {
@@ -224,8 +256,9 @@ export async function reviewCard(id: number, rating: Rating): Promise<Card> {
   return handle<Card>(res)
 }
 
+/** 带上浏览器的时区：「今天复习了几张」要从你那里的零点算，不是 UTC 零点。 */
 export async function fetchStats(): Promise<Stats> {
-  const res = await apiFetch('/api/stats')
+  const res = await apiFetch(`/api/stats?${new URLSearchParams({ tz: browserZone() })}`)
   return handle<Stats>(res)
 }
 
@@ -244,8 +277,9 @@ export async function importCards(
 
 // ---- 包 ------------------------------------------------------------------
 
+/** 带时区：包列表上的「复习 N」里新卡按今天的名额折算。 */
 export async function fetchDecks(): Promise<Deck[]> {
-  const res = await apiFetch('/api/decks')
+  const res = await apiFetch(`/api/decks?${new URLSearchParams({ tz: browserZone() })}`)
   return handle<Deck[]>(res)
 }
 
