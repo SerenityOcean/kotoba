@@ -68,9 +68,11 @@ function Kotoba() {
           </div>
 
           {user && (
-            <div className="flex flex-col items-start gap-4 sm:items-end">
+            // 手机上标题和导航挤不下一行：导航单独占一整行放到标题下面，
+            // 否则每个链接会被压成一个字一行
+            <div className="flex w-full flex-col items-start gap-4 sm:w-auto sm:items-end">
               <GoalCountdown />
-              <nav className="flex items-baseline gap-6 text-sm">
+              <nav className="flex w-full flex-wrap items-baseline gap-x-5 gap-y-3 text-sm sm:w-auto sm:gap-x-6">
                 <NavItem to="/" end>
                   首页
                 </NavItem>
@@ -237,7 +239,8 @@ function UserMenu() {
   const { user, logout } = useAuth()
 
   return (
-    <span className="flex items-baseline gap-2 border-l border-usu pl-5">
+    // 手机上推到这一行最右边；宽屏照旧跟在导航后面，用竖线隔开
+    <span className="ml-auto flex items-baseline gap-2 whitespace-nowrap sm:ml-0 sm:border-l sm:border-usu sm:pl-5">
       <NavLink
         to="/account"
         title="账号设置"
@@ -272,8 +275,8 @@ function NavItem({
       end={end}
       className={({ isActive }) =>
         isActive
-          ? 'border-b border-sumi pb-0.5 text-sumi'
-          : 'border-b border-transparent pb-0.5 text-hai transition hover:text-sumi'
+          ? 'whitespace-nowrap border-b border-sumi pb-0.5 text-sumi'
+          : 'whitespace-nowrap border-b border-transparent pb-0.5 text-hai transition hover:text-sumi'
       }
     >
       {children}

@@ -46,9 +46,8 @@ export default function DeckBar({
   }
 
   return (
-    <div className="mb-6 border-b border-usu pb-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="mr-1 text-xs tracking-wider text-hai">包</span>
+    <div className="mb-6">
+      <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2">
 
         <Chip active={deckId === null} onClick={() => { onSelect(null); reset() }}>
           全部 <Count>{totalCards}</Count>
@@ -66,8 +65,9 @@ export default function DeckBar({
 
         <button
           onClick={() => { setCreating(!creating); setRenaming(false); setConfirmingDelete(false) }}
-          className="px-1 text-xs text-hai transition hover:text-sumi"
+          className="text-sm text-hai transition hover:text-sumi"
           title="新建一个空包"
+          aria-label="新建一个空包"
         >
           ＋
         </button>
@@ -192,13 +192,15 @@ function Chip({
   onClick: () => void
   children: React.ReactNode
 }) {
+  // 和顶上主导航同一套样子：文字 + 下划线，不再是一排方框
   return (
     <button
       onClick={onClick}
+      aria-pressed={active}
       className={
         active
-          ? 'rounded-sm border border-ai bg-ai px-2.5 py-1 text-xs text-washi'
-          : 'rounded-sm border border-usu px-2.5 py-1 text-xs text-hai transition hover:border-sumi hover:text-sumi'
+          ? 'border-b border-sumi pb-0.5 text-sm text-sumi'
+          : 'border-b border-transparent pb-0.5 text-sm text-hai transition hover:text-sumi'
       }
     >
       {children}
@@ -207,5 +209,5 @@ function Chip({
 }
 
 function Count({ children }: { children: React.ReactNode }) {
-  return <span className="tabular-nums opacity-60">{children}</span>
+  return <span className="ml-0.5 text-xs tabular-nums opacity-60">{children}</span>
 }
