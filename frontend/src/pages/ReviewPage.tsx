@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { fetchDecks, fetchDueCards, fillReadingsFor, reviewCard } from '../api'
+import { fetchDecks, fetchDueCards, fetchStats, fillReadingsFor, reviewCard } from '../api'
 import Furigana from '../components/Furigana'
 import type { Card, Rating } from '../api'
 import { closestReading, finishKana, isCorrect, markMistakes, romajiToKana } from '../kana'
@@ -21,6 +21,12 @@ type Mode = 'type' | 'flip'
 type Phase = 'answer' | 'right' | 'wrong' | 'hidden' | 'revealed'
 
 const MODE_KEY = 'kotoba:review-mode'
+
+/** 答错的卡插回队列，中间隔这么多张再考一次 —— 太近了只是在背短期记忆。 */
+const RETRY_GAP = 5
+
+/** 今天的新词学完以后，「再来几张」一次给多少。 */
+const EXTRA_NEW = 10
 
 /** 记住上次用的模式。存储读不了（隐私模式之类）就默认打字。 */
 function loadMode(): Mode {
@@ -136,15 +142,40 @@ export default function ReviewPage() {
     setPhase('answer')
   }
 
+  /**
+   * 正在提交评分。评分要等服务器回来才翻到下一张，这期间再按一下回车
+   * 会对同一张卡再评一次 —— 新卡连按两下「记住了」就从 1 天跳到 6 天。
+   * 用 ref 不用 state：同一刻连着进来的两次按键，state 还来不及更新。
+   */
+  const submitting = useRef(false)
+  // 这一轮里答错过的卡。它们会被插回队列再考一次
+  const failed = useRef(new Set<number>())
+
   const handleRate = useCallback(
     async (rating: Rating) => {
-      if (!current) return
+      if (!current || submitting.current) return
+      submitting.current = true
       try {
-        await reviewCard(current.id, rating)
+        // 同一轮里再考又错：第一次已经记过「忘了」，不再扣一遍难度系数和忘记次数，只是再排回去
+        const againInRetry = rating === 'AGAIN' && failed.current.has(current.id)
+        if (!againInRetry) {
+          await reviewCard(current.id, rating)
+        }
+
+        let next = queue
+        if (rating === 'AGAIN') {
+          failed.current.add(current.id)
+          // 插到后面隔 RETRY_GAP 张的位置；剩下的不够就排到最后
+          const at = Math.min(index + 1 + RETRY_GAP, queue.length)
+          next = [...queue.slice(0, at), current, ...queue.slice(at)]
+          setQueue(next)
+        }
         setIndex(index + 1)
-        startCard(queue[index + 1], mode)
+        startCard(next[index + 1], mode)
       } catch (e) {
         setError(e instanceof Error ? e.message : '提交失败')
+      } finally {
+        submitting.current = false
       }
     },
     [current, index, queue, mode, startCard],
@@ -198,6 +229,9 @@ export default function ReviewPage() {
       if (!current || target instanceof HTMLInputElement || target.closest?.('[data-sound-picker]')) {
         return
       }
+      // 按住不放时浏览器会自动重复发按键，那不是又按了一次。不挡的话，
+      // 在输入框里按住回车：第一下交答案，后面重复的那些直接把这张评成「记住了」
+      if (e.repeat) return
 
       if (phase === 'hidden') {
         if (e.key === ' ' || e.key === 'Enter') {
@@ -223,21 +257,33 @@ export default function ReviewPage() {
   if (loading) return <p className="text-sm text-hai">加载中…</p>
   if (error) return <p className="text-sm text-shu">{error}</p>
 
+  // 进度按卡片张数算：答错插回来再考的那几次不算进总数。
+  // 数字是「看到第几张了」，进度条是「真正过关了几张」（等着再考的不算过关）
+  const total = new Set(queue.map((c) => c.id)).size
+  const seen = new Set(queue.slice(0, index + 1).map((c) => c.id)).size
+  const done = total - new Set(queue.slice(index).map((c) => c.id)).size
+
   if (!current) {
     return (
-      <div className="py-24 text-center">
-        <p className="font-mincho text-2xl">
-          {queue.length === 0 ? '今日已清空' : `复习完了 ${queue.length} 张`}
-        </p>
-        <button
-          onClick={() => navigate('/')}
-          className="mt-8 rounded-sm border border-sumi px-6 py-2.5 text-sm transition hover:bg-sumi hover:text-washi"
-        >
-          返回首页
-        </button>
-      </div>
+      <Finished
+        reviewed={total}
+        deckId={deckId}
+        onMore={(cards) => {
+          failed.current = new Set()
+          setQueue(cards)
+          setIndex(0)
+          startCard(cards[0], mode)
+          if (mode === 'type') {
+            fillStarted.current = false
+            fillMissing(cards)
+          }
+        }}
+        onHome={() => navigate('/')}
+      />
     )
   }
+
+  const isRetry = failed.current.has(current.id)
 
   const showBack = phase === 'revealed' || phase === 'right' || phase === 'wrong'
   // 打字时正面不能带注音，不然答案就印在题目上了
@@ -250,12 +296,13 @@ export default function ReviewPage() {
           <span className="max-w-[40%] truncate text-xs text-hai">{deckName}</span>
         )}
         <span className="text-xs tabular-nums text-hai">
-          {index + 1} / {queue.length}
+          {seen} / {total}
         </span>
+        {isRetry && <span className="text-xs text-shu">再考一次</span>}
         <div className="h-px flex-1 bg-usu">
           <div
             className="h-px bg-ai transition-all duration-300"
-            style={{ width: `${(index / queue.length) * 100}%` }}
+            style={{ width: `${(done / total) * 100}%` }}
           />
         </div>
         {mode === 'type' && (
@@ -386,6 +433,78 @@ export default function ReviewPage() {
 }
 
 /**
+ * 这一轮结束。今天的新词名额用完、还有新卡在排队的话，可以「再来 10 个」——
+ * 不用为了多学一点去改每天的设置。
+ */
+function Finished({
+  reviewed,
+  deckId,
+  onMore,
+  onHome,
+}: {
+  reviewed: number
+  deckId?: number
+  onMore: (cards: Card[]) => void
+  onHome: () => void
+}) {
+  const [waiting, setWaiting] = useState<number | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [note, setNote] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchStats()
+      .then((s) => setWaiting(s.newWaiting))
+      .catch(() => setWaiting(0))
+  }, [])
+
+  async function more() {
+    setLoadingMore(true)
+    setNote(null)
+    try {
+      const cards = await fetchDueCards(deckId, EXTRA_NEW)
+      if (cards.length === 0) {
+        setNote(deckId ? '这个包里的新卡都学过了' : '没有新卡了')
+      } else {
+        onMore(cards)
+      }
+    } catch (e) {
+      setNote(e instanceof Error ? e.message : '加载失败')
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  return (
+    <div className="py-24 text-center">
+      <p className="font-mincho text-2xl">
+        {reviewed === 0 ? '今日已清空' : `复习完了 ${reviewed} 张`}
+      </p>
+      {waiting !== null && waiting > 0 && (
+        <p className="mt-4 text-sm text-hai">今天的新词学完了，还有 {waiting} 张新卡在排队</p>
+      )}
+      <div className="mt-8 flex flex-wrap justify-center gap-3">
+        {waiting !== null && waiting > 0 && (
+          <button
+            onClick={more}
+            disabled={loadingMore}
+            className="rounded-sm bg-ai px-6 py-2.5 text-sm text-washi transition hover:opacity-85 disabled:opacity-30"
+          >
+            {loadingMore ? '加载中…' : `再来 ${EXTRA_NEW} 个`}
+          </button>
+        )}
+        <button
+          onClick={onHome}
+          className="rounded-sm border border-sumi px-6 py-2.5 text-sm transition hover:bg-sumi hover:text-washi"
+        >
+          返回首页
+        </button>
+      </div>
+      {note && <p className="mt-4 text-sm text-hai">{note}</p>}
+    </div>
+  )
+}
+
+/**
  * 答题框。罗马字边打边转成假名；用系统日语输入法时，选字过程中的回车
  * 是在确认候选，不能当成提交 —— 不然字还没选完答案就交上去了。
  */
@@ -425,7 +544,8 @@ function AnswerInput({
           if (e.nativeEvent.isComposing || e.keyCode === 229) return
           if (e.key === 'Enter') {
             e.preventDefault()
-            onSubmit()
+            // 按住回车只算一次
+            if (!e.repeat) onSubmit()
           }
           if (e.key === 'Escape' && onGiveUp) {
             e.preventDefault()

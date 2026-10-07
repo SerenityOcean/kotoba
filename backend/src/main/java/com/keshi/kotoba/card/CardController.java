@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.keshi.kotoba.web.ApiError;
+import com.keshi.kotoba.web.Zones;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 
 import java.time.Instant;
@@ -41,10 +42,16 @@ public class CardController {
                 .toList();
     }
 
+    /**
+     * 这一轮要复习的卡。tz 是浏览器时区（「今天学了几张新卡」按它切天），
+     * extraNew 是今天名额用完后「再来几张」。
+     */
     @GetMapping("/due")
     public List<CardResponse> due(@AuthenticationPrincipal AppUserPrincipal user,
-                                  @RequestParam(required = false) Long deckId) {
-        return cardService.findDue(user.id(), deckId, Instant.now())
+                                  @RequestParam(required = false) Long deckId,
+                                  @RequestParam(required = false) String tz,
+                                  @RequestParam(defaultValue = "0") int extraNew) {
+        return cardService.findDue(user.id(), deckId, Instant.now(), Zones.orUtc(tz), extraNew)
                 .stream()
                 .map(CardResponse::from)
                 .toList();
