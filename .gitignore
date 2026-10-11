@@ -1,3 +1,6 @@
 .DS_Store
 .idea/
 *.iml
+
+# demo/seed.py 生成的演示账号密码
+demo/accounts.*.txt

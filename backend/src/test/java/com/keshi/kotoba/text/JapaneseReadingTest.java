@@ -53,6 +53,8 @@ class JapaneseReadingTest {
             "二十歳, はたち",
             "四時, よじ",
             "九時, くじ",
+            "七時半, しちじはん",
+            "六時半, ろくじはん",
             "一口, ひとくち",
     })
     void specialCounterReadings(String text, String expected) {
@@ -116,6 +118,11 @@ class JapaneseReadingTest {
             "入り口, いりぐち",
             "出口, でぐち",
             "夜中に目が覚めた, よなかにめがさめた",
+            "日本の料理, にほんのりょうり",
+            "日本人, にほんじん",
+            "日本語, にほんご",
+            "洗濯物を干す, せんたくものをほす",
+            "宝物, たからもの",
     })
     void fixesKnownMisreads(String text, String expected) {
         assertEquals(expected, reading(text));

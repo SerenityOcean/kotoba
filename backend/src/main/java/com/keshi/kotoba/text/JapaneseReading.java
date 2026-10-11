@@ -1,14 +1,18 @@
 package com.keshi.kotoba.text;
 
 import org.apache.lucene.analysis.ja.JapaneseTokenizer;
+import org.apache.lucene.analysis.ja.dict.UserDictionary;
 import org.apache.lucene.analysis.ja.tokenattributes.PartOfSpeechAttribute;
 import org.apache.lucene.analysis.ja.tokenattributes.ReadingAttribute;
 import org.apache.lucene.analysis.tokenattributes.CharTermAttribute;
 import org.apache.lucene.analysis.tokenattributes.OffsetAttribute;
 
 import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
 import java.io.StringReader;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -33,14 +37,17 @@ public final class JapaneseReading {
     private static final Pattern KANJI_OR_NOT = Pattern.compile("[" + KANJI + "]+|[^" + KANJI + "]+");
 
     /**
-     * IPADIC 里已知的错读，按写法开头纠正。預ける 词典里是旧写法 あづける，
-     * 出口 单独出现时会被当成姓氏 いでぐち，夜中 在句子里常被读成 やちゅう。
+     * IPADIC 里已知的错读，按写法开头纠正。只放用户词典管不了的：会活用的词
+     * （預ける 词典里是旧写法 あづける，預けて、預けた 都要改），和复合词的开头
+     * （日本 词典偏向 にっぽん，日本人、日本一 也一样；日常说 にほん）。
+     * 不活用的名词放用户词典 kuromoji-user-dict.txt。
      */
     private static final List<Misread> MISREADS = List.of(
             new Misread("預", "アヅ", "アズ"),
-            new Misread("入り口", "イリクチ", "イリグチ"),
-            new Misread("出口", "イデグチ", "デグチ"),
-            new Misread("夜中", "ヤチュウ", "ヨナカ"));
+            new Misread("日本", "ニッポン", "ニホン"));
+
+    /** 补词典的缺：没收的复合词（洗濯物）、常用读音给错的名词（宝物）。 */
+    private static final UserDictionary USER_DICTIONARY = loadUserDictionary();
 
     private JapaneseReading() {
     }
@@ -93,7 +100,7 @@ public final class JapaneseReading {
         List<Morpheme> morphemes = new ArrayList<>();
         // 分词器不是线程安全的，每次新建；词典是全局单例，只在第一次用时加载
         try (JapaneseTokenizer tokenizer =
-                     new JapaneseTokenizer(null, false, JapaneseTokenizer.Mode.NORMAL)) {
+                     new JapaneseTokenizer(USER_DICTIONARY, false, JapaneseTokenizer.Mode.NORMAL)) {
             CharTermAttribute term = tokenizer.addAttribute(CharTermAttribute.class);
             ReadingAttribute reading = tokenizer.addAttribute(ReadingAttribute.class);
             PartOfSpeechAttribute pos = tokenizer.addAttribute(PartOfSpeechAttribute.class);
@@ -112,6 +119,15 @@ public final class JapaneseReading {
             throw new UncheckedIOException(e);
         }
         return morphemes;
+    }
+
+    private static UserDictionary loadUserDictionary() {
+        try (Reader reader = new InputStreamReader(
+                JapaneseReading.class.getResourceAsStream("kuromoji-user-dict.txt"), StandardCharsets.UTF_8)) {
+            return UserDictionary.open(reader);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /** 词典给的片假名读音，纠正已知错读后转成平假名。词典里没有的词是 null。 */
