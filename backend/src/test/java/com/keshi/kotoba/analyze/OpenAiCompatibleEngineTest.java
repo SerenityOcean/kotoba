@@ -19,7 +19,8 @@ class OpenAiCompatibleEngineTest {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private static final OpenAiCompatibleEngine ENGINE =
-            new OpenAiCompatibleEngine(null, JSON, "test", "false");
+            new OpenAiCompatibleEngine(null, JSON, "test", "false",
+                    OpenAiCompatibleEngine.ThinkingSwitch.QWEN);
 
     @Test
     @DisplayName("完整对象后面多一个 }，照样读出来")
@@ -37,7 +38,8 @@ class OpenAiCompatibleEngineTest {
     }
 
     private static JsonNode unwrap(String raw) {
-        return new OpenAiCompatibleEngine(null, JSON, "test", "false")
+        return new OpenAiCompatibleEngine(null, JSON, "test", "false",
+                    OpenAiCompatibleEngine.ThinkingSwitch.QWEN)
                 .unwrapDoubleEncoded(JSON.readTree(raw));
     }
 
@@ -87,5 +89,23 @@ class OpenAiCompatibleEngineTest {
         assertNull(OpenAiCompatibleEngine.unwrap("这句话我看不懂"));
         assertNull(OpenAiCompatibleEngine.unwrap(""));
         assertNull(OpenAiCompatibleEngine.unwrap(null));
+    }
+
+    @Test
+    @DisplayName("关思考模式的字段按服务商发：qwen 和 DeepSeek 写法不同")
+    void switchesThinkingPerProvider() {
+        assertEquals(OpenAiCompatibleEngine.ThinkingSwitch.DEEPSEEK,
+                OpenAiCompatibleEngine.ThinkingSwitch.forBaseUrl("https://api.deepseek.com"));
+        assertEquals(OpenAiCompatibleEngine.ThinkingSwitch.QWEN,
+                OpenAiCompatibleEngine.ThinkingSwitch.forBaseUrl(
+                        "https://dashscope.aliyuncs.com/compatible-mode/v1"));
+
+        java.util.Map<String, Object> deepseek = new java.util.HashMap<>();
+        OpenAiCompatibleEngine.ThinkingSwitch.DEEPSEEK.apply(deepseek, false);
+        assertEquals(java.util.Map.of("thinking", java.util.Map.of("type", "disabled")), deepseek);
+
+        java.util.Map<String, Object> qwen = new java.util.HashMap<>();
+        OpenAiCompatibleEngine.ThinkingSwitch.QWEN.apply(qwen, false);
+        assertEquals(java.util.Map.of("enable_thinking", false), qwen);
     }
 }

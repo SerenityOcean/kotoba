@@ -211,17 +211,14 @@ export async function updateCard(
 
 /** 补读音一批的结果。nextAfterId 是 null 就翻完了。 */
 export interface ReadingFill {
-  byRule: number
-  byModel: number
+  filled: number
+  /** 词典里查不到、没补上的张数 */
   missed: number
   nextAfterId: number | null
-  /** 模型那一步失败的原因，规则那部分照样存了 */
-  modelError: string | null
 }
 
 export interface CardReadings {
   readings: { id: number; reading: string }[]
-  modelError: string | null
 }
 
 /** 只给指定的卡补读音，一次最多 50 张。复习页开场给到期的卡用。 */
@@ -410,9 +407,8 @@ export interface Article {
 }
 
 export interface FuriganaResult {
+  /** 注好音的文本。后端查词典注音，词典里没有的词原样留着 */
   text: string
-  /** false = 模型把正文改了，后端退回了原文。这段是没注音的。 */
-  annotated: boolean
 }
 
 /** 列表的一页。page 从 0 数；totalPages、total 都是按当前搜索词算的。 */
@@ -498,7 +494,7 @@ export async function deleteArticle(id: number): Promise<void> {
   }
 }
 
-/** 给一段日语加注音。后端会校验模型没改正文，改了就退回原文。 */
+/** 给一段日语加注音。后端查本地词典，只插注音，正文一个字不动。 */
 export async function annotateFurigana(text: string): Promise<FuriganaResult> {
   const res = await apiFetch('/api/furigana', {
     method: 'POST',

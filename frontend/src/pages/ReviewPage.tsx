@@ -65,7 +65,7 @@ export default function ReviewPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [deckName, setDeckName] = useState<string | null>(null)
-  // 开场给没读音的到期卡补读音：进行中 / 模型那边的失败原因
+  // 开场给没读音的到期卡补读音：进行中 / 请求失败的原因
   const [filling, setFilling] = useState(false)
   const [fillError, setFillError] = useState<string | null>(null)
   const fillStarted = useRef(false)
@@ -106,7 +106,6 @@ export default function ReviewPage() {
             found.has(c.id) ? { ...c, reading: found.get(c.id)!, readingMissing: false } : c,
           ),
         )
-        if (result.modelError) setFillError(result.modelError)
       }
     } catch (e) {
       setFillError(e instanceof Error ? e.message : '补读音失败')

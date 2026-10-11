@@ -43,10 +43,19 @@ class ReadingsTest {
     @DisplayName("背面开头的假名和正面的送り仮名对不上，就不当读音")
     void rejectsBackPrefixThatDoesNotFit() {
         // 戻す 以「す」结尾，「ない」不可能是它的读音
-        assertNull(Readings.guess("戻す", "ない 没有"));
+        assertNull(Readings.fromBack("戻す", "ない 没有"));
         // 背面是中文，开头没有假名
-        assertNull(Readings.guess("判断", "判断；判定"));
-        assertNull(Readings.guess("判断", null));
+        assertNull(Readings.fromBack("判断", "判断；判定"));
+        assertNull(Readings.fromBack("判断", null));
+    }
+
+    @Test
+    @DisplayName("卡片自己没带读音，就查词典")
+    void fallsBackToDictionary() {
+        assertEquals("もどす", Readings.guess("戻す", "ない 没有"));
+        assertEquals("はんだん", Readings.guess("判断", "判断；判定"));
+        // 正面注了一部分的，注过的照用，只查剩下的
+        assertEquals("もちあわせる", Readings.guess("持[も]ち合わせる", null));
     }
 
     @Test

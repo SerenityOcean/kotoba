@@ -1,6 +1,5 @@
 package com.keshi.kotoba.card;
 
-import com.keshi.kotoba.analyze.AnalysisEngine;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -8,7 +7,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.HexFormat;
 import java.util.List;
@@ -18,14 +16,9 @@ import java.util.concurrent.ThreadLocalRandom;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 /**
- * 补读音要走真的仓库查询（按 id 翻页、reading 为空），模型换成假的
+ * 补读音要走真的仓库查询（按 id 翻页、reading 为空）
  * （要先 docker compose up 起本地库）。
  */
 @SpringBootTest
@@ -36,9 +29,6 @@ class CardReadingIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbc;
-
-    @MockitoBean
-    private AnalysisEngine engine;
 
     private long userId;
 
@@ -59,47 +49,27 @@ class CardReadingIntegrationTest {
     }
 
     @Test
-    @DisplayName("建卡时能猜的当场猜好，不问模型")
+    @DisplayName("建卡时就把读音填好：卡片自己带的优先，没有就查词典")
     void guessesOnCreate() {
         assertEquals("たべる", cardService.create(userId, null, "食[た]べる", "吃").card().getReading());
         assertEquals("はんだん", cardService.create(userId, null, "判断", "はんだん 名詞").card().getReading());
-        assertNull(cardService.create(userId, null, "戻す", "还原").card().getReading());
-        verify(engine, never()).annotate(anyString(), anyString());
+        assertEquals("もどす", cardService.create(userId, null, "戻す", "还原").card().getReading());
     }
 
     @Test
-    @DisplayName("补读音：规则能猜的先猜，剩下的一次问模型，句子和全假名的跳过")
-    void fillsByRuleThenModel() {
+    @DisplayName("补读音：句子和全假名的跳过，其余都补上")
+    void fillsReadings() {
         insertWithoutReading("判断", "はんだん 名詞");
         insertWithoutReading("戻す", "还原");
         insertWithoutReading("一緒", "一起");
         insertWithoutReading("それでいて", "尽管如此");
-        when(engine.annotate(anyString(), eq("戻す\n一緒")))
-                .thenReturn("戻[もど]す\n\n一緒[いっしょ]");
 
         CardService.ReadingFill fill = cardService.fillReadings(userId, null, 50);
 
-        assertEquals(1, fill.byRule());
-        assertEquals(2, fill.byModel());
+        assertEquals(3, fill.filled());
         assertEquals(0, fill.missed());
         assertNull(fill.nextAfterId(), "一批就翻完了");
-        assertNull(fill.modelError());
         assertEquals(Map.of("判断", "はんだん", "戻す", "もどす", "一緒", "いっしょ"), readings());
-    }
-
-    @Test
-    @DisplayName("模型漏注了的那张不要，别的照存")
-    void dropsWordsTheModelSkipped() {
-        insertWithoutReading("戻す", "还原");
-        insertWithoutReading("一緒", "一起");
-        // 「戻す」没注音，拼不出读音；「一緒」那行没问题
-        when(engine.annotate(anyString(), anyString())).thenReturn("戻す\n一緒[いっしょ]");
-
-        CardService.ReadingFill fill = cardService.fillReadings(userId, null, 50);
-
-        assertEquals(1, fill.byModel());
-        assertEquals(1, fill.missed());
-        assertEquals(Map.of("一緒", "いっしょ"), readings());
     }
 
     @Test
@@ -114,7 +84,7 @@ class CardReadingIntegrationTest {
         CardService.ReadingFill second = cardService.fillReadings(userId, first.nextAfterId(), 2);
         assertNull(second.nextAfterId());
 
-        assertEquals(3, first.byRule() + second.byRule());
+        assertEquals(3, first.filled() + second.filled());
     }
 
     @Test
@@ -124,7 +94,6 @@ class CardReadingIntegrationTest {
         long dueB = insertWithoutReading("一緒", "一起");
         long notAsked = insertWithoutReading("判断", "はんだん");
         long alreadyRead = cardService.create(userId, null, "食[た]べる", "吃").card().getId();
-        when(engine.annotate(anyString(), eq("一緒"))).thenReturn("一緒[いっしょ]");
 
         CardService.CardReadings result =
                 cardService.fillReadingsFor(userId, List.of(dueA, dueB, alreadyRead));
@@ -135,7 +104,6 @@ class CardReadingIntegrationTest {
                 result.readings().stream()
                         .sorted(java.util.Comparator.comparing(CardService.CardReading::id))
                         .toList());
-        assertNull(result.modelError());
         assertNull(readings().get("判断"), "没点名的卡不该被补：" + notAsked);
     }
 
