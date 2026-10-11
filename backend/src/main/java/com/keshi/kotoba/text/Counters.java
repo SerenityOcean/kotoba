@@ -49,6 +49,10 @@ final class Counters {
             entry("四時", new Special("よ", "じ", false)),
             entry("七時", new Special("しち", "じ", false)),
             entry("九時", new Special("く", "じ", false)),
+            // 「七時半」的量词是整个「時半」
+            entry("四時半", new Special("よ", "じはん", false)),
+            entry("七時半", new Special("しち", "じはん", false)),
+            entry("九時半", new Special("く", "じはん", false)),
             entry("四時間", new Special("よ", "じかん", false)),
             entry("九時間", new Special("く", "じかん", false)),
             entry("四年", new Special("よ", "ねん", false)),

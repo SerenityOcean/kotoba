@@ -1,5 +1,6 @@
 package com.keshi.kotoba.auth;
 
+import com.keshi.kotoba.web.RateLimiter;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;

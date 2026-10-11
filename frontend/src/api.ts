@@ -259,17 +259,56 @@ export async function fetchStats(): Promise<Stats> {
   return handle<Stats>(res)
 }
 
-/** deckName 留空进默认包；包不存在会按这个名字新建。 */
+/** 一批请求体最多这么大：nginx 只收 1 MB 以内的，留一半余量。 */
+const IMPORT_BATCH_BYTES = 512 * 1024
+/** 一批最多这么多张，后端上限 5000。 */
+const IMPORT_BATCH_CARDS = 2000
+
+/**
+ * deckName 留空进默认包；包不存在会按这个名字新建。
+ *
+ * 带例句的 Anki 包一千多张就超过 1 MB 了，所以按大小分批发，结果加起来。
+ * 中途哪批失败了，前面几批已经存下了 —— 重新导入时包里已有的会被跳过，不会重复。
+ */
 export async function importCards(
   cards: { front: string; back: string }[],
   deckName?: string,
 ): Promise<ImportResult> {
-  const res = await apiFetch('/api/cards/import', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ cards, deckName }),
-  })
-  return handle<ImportResult>(res)
+  const encoder = new TextEncoder()
+  const batches: { front: string; back: string }[][] = []
+  let batch: { front: string; back: string }[] = []
+  let size = 0
+  for (const card of cards) {
+    const bytes = encoder.encode(JSON.stringify(card)).length + 1
+    if (batch.length > 0 && (size + bytes > IMPORT_BATCH_BYTES || batch.length >= IMPORT_BATCH_CARDS)) {
+      batches.push(batch)
+      batch = []
+      size = 0
+    }
+    batch.push(card)
+    size += bytes
+  }
+  if (batch.length > 0) batches.push(batch)
+
+  let total: ImportResult | null = null
+  for (const part of batches) {
+    const res = await apiFetch('/api/cards/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cards: part, deckName }),
+    })
+    const result = await handle<ImportResult>(res)
+    total = total
+      ? {
+          ...result,
+          imported: total.imported + result.imported,
+          skipped: total.skipped + result.skipped,
+          skippedFronts: [...total.skippedFronts, ...result.skippedFronts],
+        }
+      : result
+  }
+  if (total === null) throw new Error('没有要导入的卡片')
+  return total
 }
 
 // ---- 包 ------------------------------------------------------------------
