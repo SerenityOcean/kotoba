@@ -40,14 +40,39 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
     private final RestClient http;
     private final ObjectMapper json;
     private final String model;
-    /** "true"/"false" 显式开关思考模式，空串表示这个字段不发（非 qwen 的服务可能不认）。 */
+    /** "true"/"false" 显式开关思考模式，空串表示这个字段不发，用服务端默认。 */
     private final String thinking;
+    private final ThinkingSwitch thinkingSwitch;
 
-    OpenAiCompatibleEngine(RestClient http, ObjectMapper json, String model, String thinking) {
+    OpenAiCompatibleEngine(RestClient http, ObjectMapper json, String model, String thinking,
+                           ThinkingSwitch thinkingSwitch) {
         this.http = http;
         this.json = json;
         this.model = model;
         this.thinking = thinking;
+        this.thinkingSwitch = thinkingSwitch;
+    }
+
+    /**
+     * 开关思考模式的字段各家不一样，发错了要么报错要么被无视。
+     * DeepSeek 默认是开着的，不显式关掉就又慢又多花输出 token。
+     */
+    enum ThinkingSwitch {
+        /** 百炼（qwen）：{"enable_thinking": false} */
+        QWEN,
+        /** DeepSeek：{"thinking": {"type": "disabled"}} */
+        DEEPSEEK;
+
+        static ThinkingSwitch forBaseUrl(String baseUrl) {
+            return baseUrl.contains("deepseek.com") ? DEEPSEEK : QWEN;
+        }
+
+        void apply(Map<String, Object> body, boolean on) {
+            switch (this) {
+                case QWEN -> body.put("enable_thinking", on);
+                case DEEPSEEK -> body.put("thinking", Map.of("type", on ? "enabled" : "disabled"));
+            }
+        }
     }
 
     /** 思考关掉时才能强制指定函数 —— 开着的话 qwen 会直接回 400。 */
@@ -62,7 +87,7 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
         // 拆解的 JSON 本来就长，很容易被截断成半句
         body.put("max_tokens", MAX_TOKENS);
         if (!thinking.isBlank()) {
-            body.put("enable_thinking", Boolean.parseBoolean(thinking));
+            thinkingSwitch.apply(body, Boolean.parseBoolean(thinking));
         }
         return body;
     }
@@ -86,24 +111,6 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
                 : "auto");
 
         return parse(extractArguments(post(body)));
-    }
-
-    @Override
-    public String annotate(String systemPrompt, String text) {
-        Map<String, Object> body = baseBody();
-        body.put("messages", List.of(
-                Map.of("role", "system", "content", systemPrompt),
-                Map.of("role", "user", "content", text)));
-
-        ChatResponse response = post(body);
-        if (response == null || response.choices() == null || response.choices().isEmpty()) {
-            throw new AnalysisFailedException("模型没有返回任何结果", null);
-        }
-        ChatMessage message = response.choices().getFirst().message();
-        if (message == null || message.content() == null || message.content().isBlank()) {
-            throw new AnalysisFailedException("模型没有返回内容", null);
-        }
-        return message.content();
     }
 
     private ChatResponse post(Map<String, Object> body) {

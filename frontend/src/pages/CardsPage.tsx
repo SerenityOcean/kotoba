@@ -129,30 +129,27 @@ export default function CardsPage() {
   }
 
   /**
-   * 给还没读音的卡补读音。后端一次只做一批（规则先猜，剩下的问一次模型），
-   * 这边接着往后翻，直到翻完 —— 几百张卡一个请求做完要等一两分钟，会超时。
+   * 给还没读音的卡补读音（卡片自己带的读音优先，没有就查词典）。后端一次只做一批，
+   * 这边接着往后翻，直到翻完，边翻边显示进度。
    */
   async function handleFillReadings() {
     setFilling(0)
     setFillNote(null)
     let filled = 0
     let missed = 0
-    let modelError: string | null = null
     try {
       let afterId: number | undefined
       do {
         const batch = await fillReadings(afterId)
-        filled += batch.byRule + batch.byModel
+        filled += batch.filled
         missed += batch.missed
-        modelError = batch.modelError ?? modelError
         setFilling(filled)
         afterId = batch.nextAfterId ?? undefined
       } while (afterId !== undefined)
 
       setFillNote(
         `补上了 ${filled} 张` +
-          (missed > 0 ? `，${missed} 张没补上，点开那张卡「编辑」手动填` : '') +
-          (modelError ? `（模型出错：${modelError}）` : ''),
+          (missed > 0 ? `，${missed} 张词典里查不到，点开那张卡「编辑」手动填` : ''),
       )
       await load()
     } catch (e) {

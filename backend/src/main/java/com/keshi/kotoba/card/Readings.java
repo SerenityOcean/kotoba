@@ -1,6 +1,7 @@
 package com.keshi.kotoba.card;
 
 import com.keshi.kotoba.text.FuriganaNotation;
+import com.keshi.kotoba.text.JapaneseReading;
 
 import java.util.Arrays;
 import java.util.regex.Matcher;
@@ -10,8 +11,8 @@ import java.util.stream.Collectors;
 /**
  * 卡片读音：哪些卡值得打字、读音从哪儿猜、用户填的读音怎么收。
  *
- * <p>猜的时候只用确定的信息 —— 正面的注音、背面开头那串假名。
- * 猜不出来就留空，交给「补读音」去问模型，或者用户自己填。
+ * <p>先用卡片自己带的信息 —— 正面的注音、背面开头那串假名，都是人写的，最可信；
+ * 没有再查词典（{@link JapaneseReading}）。词典也查不出来就留空，等用户自己填。
  */
 final class Readings {
 
@@ -47,13 +48,26 @@ final class Readings {
                 && !plain.matches(".*[\\s。、，,！!？?〜～…].*");
     }
 
-    /** 先看正面的注音，再看背面开头。都不行就是 null。 */
+    /** 先看正面的注音，再看背面开头，最后查词典。都不行就是 null。 */
     static String guess(String front, String back) {
         if (!wanted(front)) {
             return null;
         }
         String fromFront = fromAnnotated(front);
-        return fromFront != null ? fromFront : fromBack(front, back);
+        if (fromFront != null) {
+            return fromFront;
+        }
+        String fromBack = fromBack(front, back);
+        return fromBack != null ? fromBack : fromDictionary(front);
+    }
+
+    /**
+     * 查词典给正面注音再拼出读音。正面已经注了一部分的（{@code 食[た]べ物}），
+     * 注过的那部分照用，只查剩下的。
+     */
+    static String fromDictionary(String front) {
+        String reading = fromAnnotated(JapaneseReading.annotate(front));
+        return reading != null && fits(FuriganaNotation.strip(front).strip(), reading) ? reading : null;
     }
 
     /** 正面每个汉字都注了音，就能拼出整个读音：{@code 食[た]べる} → たべる。 */
@@ -116,12 +130,8 @@ final class Readings {
         return !text.isEmpty() && KANA.matcher(text).matches();
     }
 
-    /** 片假名 → 平假名，比较头尾送り仮名时用。长音、中点不动。 */
+    /** 片假名 → 平假名，比较头尾送り仮名时用。 */
     static String toHiragana(String text) {
-        StringBuilder out = new StringBuilder(text.length());
-        for (char c : text.toCharArray()) {
-            out.append(c >= 'ァ' && c <= 'ヶ' ? (char) (c - 0x60) : c);
-        }
-        return out.toString();
+        return JapaneseReading.toHiragana(text);
     }
 }

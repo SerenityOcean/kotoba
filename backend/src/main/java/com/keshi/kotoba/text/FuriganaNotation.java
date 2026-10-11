@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
  */
 public final class FuriganaNotation {
 
-    private static final Pattern RUBY =
+    static final Pattern RUBY =
             Pattern.compile("([\\u4e00-\\u9fff々〆ヶ]+)\\[([^\\[\\]]+)\\]");
 
     /**

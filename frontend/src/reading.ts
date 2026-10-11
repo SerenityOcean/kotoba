@@ -18,11 +18,11 @@ const CONCURRENCY = 4
 /**
  * 给整篇正文注音：按块并行，每块回来填回原位。plain 是没注上音、原样留下的块数。
  *
- * 某一块注不上（模型改了正文、或者请求失败）就用原文，不让整篇存不下来 ——
+ * 某一块请求失败就用原文，不让整篇存不下来 ——
  * 文章是你的东西，注音只是锦上添花，不该因为它丢了正文。
  *
- * 改文章时传 previous（原来带注音的正文）：没动过的行直接用原来的注音，
- * 不再跑模型 —— 改一个错字不该把整篇重注一遍。
+ * 改文章时传 previous（原来带注音的正文）：没动过的行直接用原来的注音 ——
+ * 改一个错字不该把整篇重注一遍，原来的注音可能比词典猜的更准。
  */
 export async function annotateArticle(
   body: string,
@@ -59,7 +59,6 @@ export async function annotateArticle(
         try {
           const result = await annotateFurigana(pieces[index].text)
           annotated[index] = result.text
-          if (!result.annotated) plain += 1
         } catch {
           plain += 1
         }

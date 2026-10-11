@@ -1,75 +1,46 @@
 package com.keshi.kotoba.analyze;
 
+import com.keshi.kotoba.text.FuriganaNotation;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * 注音这件事真正的风险不是注错，是模型顺手把正文改了 —— 那样读者看到的
- * 就不是原文了，而且没人会发现。这里守的就是那道校验。
+ * 注音这件事最要紧的不是注得多准，是不能动正文 —— 读者看到的必须是原文。
+ * 读音准不准在 JapaneseReadingTest 里测。
  */
 class FuriganaServiceTest {
 
-    private static FuriganaService serviceReturning(String canned) {
-        return new FuriganaService(StubEngine.provide(new StubEngine(text -> canned)));
+    private final FuriganaService service = new FuriganaService();
+
+    @Test
+    @DisplayName("剥掉注音和原文一字不差")
+    void neverAltersText() {
+        String text = "関東地方の太平洋側では、明日の朝まで激しい雨が降るおそれがあります。\n"
+                + "気象庁は、土砂災害や川の増水に警戒するよう呼びかけています。";
+
+        String annotated = service.annotate(text).text();
+
+        assertEquals(text, FuriganaNotation.strip(annotated));
+        assertEquals("かんとうちほうのたいへいようがわでは、あしたのあさまではげしいあめがふるおそれがあります。\n"
+                        + "きしょうちょうは、どしゃさいがいやかわのぞうすいにけいかいするようよびかけています。",
+                FuriganaNotation.reading(annotated));
     }
 
     @Test
-    @DisplayName("只插入了注音，原样收下")
-    void acceptsPureAnnotation() {
-        FuriganaResult result = serviceReturning("東日本[ひがしにほん]の空[そら]")
-                .annotate("東日本の空");
-
-        assertTrue(result.annotated());
-        assertEquals("東日本[ひがしにほん]の空[そら]", result.text());
+    @DisplayName("原文里的括号注音先转成方括号，词典不再动它")
+    void keepsAuthorsReadings() {
+        // 作者注的是 とうきょう 以外的读法，也照作者的来
+        assertEquals("東京[ひがしきょう]へ行[い]く",
+                service.annotate("東京（ひがしきょう）へ行く").text());
     }
 
     @Test
-    @DisplayName("模型改了正文就退回原文，不能让读者看到被改过的文章")
-    void rejectsAlteredText() {
-        FuriganaResult result = serviceReturning("東日本[ひがしにほん]の青[あお]い空[そら]")
-                .annotate("東日本の空");
-
-        assertFalse(result.annotated());
-        assertEquals("東日本の空", result.text());
-    }
-
-    @Test
-    @DisplayName("模型删字同样退回")
-    void rejectsDroppedText() {
-        FuriganaResult result = serviceReturning("東日本[ひがしにほん]").annotate("東日本の空");
-
-        assertFalse(result.annotated());
-        assertEquals("東日本の空", result.text());
-    }
-
-    @Test
-    @DisplayName("只是换行变空格这种空白差异不算改动")
-    void toleratesWhitespaceDifferences() {
-        FuriganaResult result =
-                serviceReturning("東日本[ひがしにほん] の 空[そら]").annotate("東日本\nの空");
-
-        assertTrue(result.annotated());
-    }
-
-    @Test
-    @DisplayName("剥注音只认汉字底字，送り仮名写法错了会被判为改动")
-    void stripOnlyMatchesKanjiBase() {
-        assertEquals("食べる", FuriganaService.strip("食[た]べる"));
-        // 「食べ[たべ]る」底字含假名，剥不掉 —— 于是和原文对不上，被拒
-        assertEquals("食べ[たべ]る", FuriganaService.strip("食べ[たべ]る"));
-    }
-
-    @Test
-    @DisplayName("原文里的括号注音先确定性地转成方括号，不花钱问模型")
+    @DisplayName("括号转方括号：半角全角都认")
     void convertsParenthesisedReadings() {
         assertEquals("価値[かち]や情報[じょうほう]",
                 FuriganaService.bracketize("価値（かち）や情報（じょうほう）"));
-        // 半角括号同样认
         assertEquals("東京[とうきょう]", FuriganaService.bracketize("東京(とうきょう)"));
     }
 
@@ -80,35 +51,5 @@ class FuriganaServiceTest {
         assertEquals("東京（首都）", FuriganaService.bracketize("東京（首都）"));
         // 前面不是汉字，不构成注音
         assertEquals("これ（それ）", FuriganaService.bracketize("これ（それ）"));
-    }
-
-    @Test
-    @DisplayName("括号注音的原文，模型原样返回也算注音成功")
-    void parenthesisedSourceStillEndsUpBracketed() {
-        // 模型看到已经是方括号了就原样返回，结果仍然是注好音的
-        FuriganaResult result = new FuriganaService(
-                StubEngine.provide(new StubEngine(text -> text)))
-                .annotate("価値（かち）や情報（じょうほう）");
-
-        assertTrue(result.annotated());
-        assertEquals("価値[かち]や情報[じょうほう]", result.text());
-    }
-
-    @Test
-    @DisplayName("模型改了正文时，确定性的括号转换仍然保留")
-    void keepsBracketizationEvenWhenModelIsRejected() {
-        FuriganaResult result = serviceReturning("まったく別[べつ]の文[ぶん]")
-                .annotate("価値（かち）");
-
-        assertFalse(result.annotated());
-        assertEquals("価値[かち]", result.text());
-    }
-
-    @Test
-    @DisplayName("没配 key 时明确拒掉")
-    void withoutEngineIsRejected() {
-        FuriganaService service = new FuriganaService(StubEngine.provide(null));
-
-        assertThrows(AnalysisUnavailableException.class, () -> service.annotate("空"));
     }
 }

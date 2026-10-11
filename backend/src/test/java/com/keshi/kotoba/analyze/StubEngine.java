@@ -2,28 +2,16 @@ package com.keshi.kotoba.analyze;
 
 import org.springframework.beans.factory.ObjectProvider;
 
-import java.util.function.UnaryOperator;
-
-/** 测试用的假引擎：analyze 回事先摆好的结果，annotate 走一个函数。 */
+/** 测试用的假引擎：analyze 回事先摆好的结果。 */
 class StubEngine implements AnalysisEngine {
 
     private final Analysis result;
-    private final UnaryOperator<String> annotation;
 
     String lastPrompt;
     String lastText;
 
     StubEngine(Analysis result) {
-        this(result, UnaryOperator.identity());
-    }
-
-    StubEngine(UnaryOperator<String> annotation) {
-        this(null, annotation);
-    }
-
-    private StubEngine(Analysis result, UnaryOperator<String> annotation) {
         this.result = result;
-        this.annotation = annotation;
     }
 
     @Override
@@ -31,13 +19,6 @@ class StubEngine implements AnalysisEngine {
         this.lastPrompt = systemPrompt;
         this.lastText = text;
         return result;
-    }
-
-    @Override
-    public String annotate(String systemPrompt, String text) {
-        this.lastPrompt = systemPrompt;
-        this.lastText = text;
-        return annotation.apply(text);
     }
 
     @Override

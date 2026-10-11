@@ -50,6 +50,7 @@ public class AnalyzeConfig {
                 .defaultHeader("Authorization", "Bearer " + apiKey)
                 .build();
 
-        return new OpenAiCompatibleEngine(http, json, model, thinking);
+        return new OpenAiCompatibleEngine(http, json, model, thinking,
+                OpenAiCompatibleEngine.ThinkingSwitch.forBaseUrl(baseUrl));
     }
 }
