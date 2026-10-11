@@ -1,8 +1,12 @@
 package com.keshi.kotoba.analyze;
 
+import com.keshi.kotoba.auth.AppUserPrincipal;
 import com.keshi.kotoba.web.ApiError;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -21,14 +25,25 @@ import org.springframework.web.bind.annotation.RestController;
 public class AnalyzeController {
 
     private final AnalyzeService analyzeService;
+    private final AnalyzeQuota quota;
 
-    public AnalyzeController(AnalyzeService analyzeService) {
+    public AnalyzeController(AnalyzeService analyzeService, AnalyzeQuota quota) {
         this.analyzeService = analyzeService;
+        this.quota = quota;
     }
 
     @PostMapping
-    public Analysis analyze(@Valid @RequestBody AnalyzeRequest request) {
+    public Analysis analyze(@AuthenticationPrincipal AppUserPrincipal user,
+                            @Valid @RequestBody AnalyzeRequest request) {
+        quota.acquire(user.id());
         return analyzeService.analyze(request.text());
+    }
+
+    @ExceptionHandler(AnalyzeLimitException.class)
+    ResponseEntity<ApiError> onLimit(AnalyzeLimitException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(Math.max(1, e.getRetryAfter().toSeconds())))
+                .body(new ApiError(e.getMessage()));
     }
 
     @ExceptionHandler(AnalysisUnavailableException.class)

@@ -12,6 +12,7 @@
 | `/home/keshi/kotoba/.env` | **数据库密码、模型 API key，不进仓库** |
 | `/var/www/kotoba/` | 前端打包产物 |
 | `/etc/nginx/sites-available/kotoba` | Nginx 站点配置 |
+| `/etc/nginx/snippets/kotoba-security-headers.conf` | 安全响应头（HSTS、CSP 等），被上面那份 include |
 | `/etc/systemd/system/kotoba.service` | 后端服务定义 |
 
 本目录下的几个文件是上述配置的副本，改动时**两边都要改**。
@@ -81,11 +82,21 @@ certbot 装好时会自带一个 systemd timer，每天跑两次、到期前自�
 那一段**不能跳转到 HTTPS** —— 跳了续期就会失败，而且失败得很安静，
 直到 90 天后证书过期才暴露。
 
-### HSTS
+### 安全响应头
 
-配置里留了一行注释掉的 `Strict-Transport-Security`。等 HTTPS 稳定跑几天
-再打开：一旦下发，浏览器会在 max-age 期间强制只用 HTTPS，中途想退回
-HTTP 调试就没办法了。
+HSTS、CSP、`X-Frame-Options` 等写在 `deploy/nginx-security-headers.conf`，
+由站点配置 include。nginx 的 `add_header` 不继承：location 里只要写了自己的
+`add_header`，server 级的就全丢了 —— 所以带 `add_header` 的 location 里也要再 include 一次。
+
+改了这两份配置之后：
+
+    rsync -P -e ssh deploy/nginx-kotoba.conf deploy/nginx-security-headers.conf kotoba:~/
+    ssh -t kotoba "sudo install -m 644 ~/nginx-security-headers.conf /etc/nginx/snippets/kotoba-security-headers.conf \
+      && sudo install -m 644 ~/nginx-kotoba.conf /etc/nginx/sites-available/kotoba \
+      && sudo nginx -t && sudo systemctl reload nginx"
+
+CSP 只放行自己的资源（外加 sql.js 要的 `wasm-unsafe-eval`）。前端要是加了外部字体、
+统计脚本之类，得先改 CSP，不然会被浏览器静默拦掉。
 
 ## 登录相关
 
@@ -94,6 +105,7 @@ HTTP 调试就没办法了。
 - `.env` 里跟登录有关的变量：
 
       COOKIE_SECURE=true                 # 已上 HTTPS，必须开
+      SERVER_ADDRESS=127.0.0.1           # 后端只听本机，外面只能经 nginx 进来
       APP_BASE_URL=https://kotoba.work   # 邮件链接、GitHub 回调都从它拼，不带结尾的 /
 
       # 找回密码 / 绑定邮箱（不配就自动隐藏这两个功能）
