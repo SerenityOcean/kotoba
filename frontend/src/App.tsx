@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import HomePage from './pages/HomePage'
 import ReviewPage from './pages/ReviewPage'
@@ -16,6 +16,8 @@ import AccountPage from './pages/AccountPage'
 import { useAuth } from './auth-context'
 import { useGoal } from './goal-context'
 import { countdown } from './goal-time'
+import { KOTOBA_THEME_KEY, useThemeState } from './theme'
+import type { Theme } from './theme'
 
 /** 没登录时用的那几页：只有一块表单，收窄居中。 */
 const SIGNED_OUT_PAGES = ['/login', '/forgot-password', '/reset-password', '/verify-email']
@@ -43,6 +45,17 @@ export default function App() {
 function Kotoba() {
   const { user, ready } = useAuth()
   const location = useLocation()
+  const { theme, toggle } = useThemeState(KOTOBA_THEME_KEY)
+
+  // 挂在 <html> 上，弹层、body 也一起换色。去 self 时摘掉 —— 那边有自己的昼夜
+  useEffect(() => {
+    const root = document.documentElement
+    if (theme === 'dark') root.dataset.theme = 'dark'
+    else delete root.dataset.theme
+    return () => {
+      delete root.dataset.theme
+    }
+  }, [theme])
 
   // 读文章时给宽屏留出第二栏放拆解面板；其余页面维持易读的窄栏宽度
   const wide = /^\/reading\/[^/]+$/.test(location.pathname)
@@ -80,7 +93,7 @@ function Kotoba() {
                 <NavItem to="/analyze">拆解</NavItem>
                 <NavItem to="/cards">卡片</NavItem>
                 <NavItem to="/higan">彼岸</NavItem>
-                <UserMenu />
+                <UserMenu theme={theme} onToggleTheme={toggle} />
               </nav>
             </div>
           )}
@@ -235,7 +248,7 @@ function GoalCountdown() {
   )
 }
 
-function UserMenu() {
+function UserMenu({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () => void }) {
   const { user, logout } = useAuth()
 
   return (
@@ -250,6 +263,15 @@ function UserMenu() {
       >
         {user?.username}
       </NavLink>
+      {/* 显示的是点了会切到的那一边 */}
+      <button
+        onClick={onToggleTheme}
+        title={theme === 'dark' ? '切到日间模式' : '切到夜间模式'}
+        aria-label={theme === 'dark' ? '切到日间模式' : '切到夜间模式'}
+        className="font-mincho text-xs text-hai transition hover:text-ai"
+      >
+        {theme === 'dark' ? '昼' : '夜'}
+      </button>
       <button
         onClick={() => logout()}
         className="text-xs text-hai transition hover:text-shu"
