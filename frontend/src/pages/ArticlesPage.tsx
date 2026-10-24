@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { createArticle, deleteArticle, fetchArticleStats, fetchArticles } from '../api'
 import type { ArticleList, ArticleStats } from '../api'
+import ArticleBatchImport from '../components/ArticleBatchImport'
 import ArticleForm from '../components/ArticleForm'
 import Pagination from '../components/Pagination'
 import { rememberListSearch } from '../reading'
@@ -29,7 +30,8 @@ export default function ArticlesPage() {
   const [version, setVersion] = useState(0)
 
   const [query, setQuery] = useState(q)
-  const [adding, setAdding] = useState(false)
+  // 正在存一篇，还是在批量导入
+  const [adding, setAdding] = useState<'one' | 'batch' | null>(null)
   // 正在确认删除的那篇。删除要点两下：第一下只是问一句
   const [confirming, setConfirming] = useState<number | null>(null)
 
@@ -117,30 +119,53 @@ export default function ArticlesPage() {
       )}
 
       <section className="mb-8 border-b border-usu pb-8">
-        {!adding ? (
-          <button
-            onClick={() => {
-              setAdding(true)
-              setError(null)
+        {adding === null ? (
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              onClick={() => {
+                setAdding('one')
+                setError(null)
+              }}
+              className="rounded-sm border border-sumi px-5 py-2.5 text-sm transition hover:bg-sumi hover:text-washi"
+            >
+              存一篇文章
+            </button>
+            <button
+              onClick={() => {
+                setAdding('batch')
+                setError(null)
+              }}
+              className="text-sm text-hai transition hover:text-sumi"
+            >
+              从文件批量导入
+            </button>
+          </div>
+        ) : adding === 'batch' ? (
+          <ArticleBatchImport
+            onImported={(count, plain) => {
+              setError(
+                plain > 0 ? `导入了 ${count} 篇，但有 ${plain} 段没能注音，那几段是原样存的` : null,
+              )
+              setQuery('')
+              setParams({})
+              setVersion((v) => v + 1)
             }}
-            className="rounded-sm border border-sumi px-5 py-2.5 text-sm transition hover:bg-sumi hover:text-washi"
-          >
-            存一篇文章
-          </button>
+            onCancel={() => setAdding(null)}
+          />
         ) : (
           <ArticleForm
             submitLabel="保存"
             hint="保存时会给全文加上振假名，长文章要等一会儿"
             onSave={async (draft, plain) => {
               await createArticle(draft.title, draft.body, draft.sourceUrl)
-              setAdding(false)
+              setAdding(null)
               setError(plain > 0 ? `存好了，但有 ${plain} 段没能注音，那几段是原样存的` : null)
               // 新存的排在最前面：回第一页、清掉搜索，才看得到它
               setQuery('')
               setParams({})
               setVersion((v) => v + 1)
             }}
-            onCancel={() => setAdding(false)}
+            onCancel={() => setAdding(null)}
           />
         )}
 
