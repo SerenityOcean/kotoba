@@ -12,6 +12,27 @@
   --font-ui: ui-sans-serif, system-ui, "Hiragino Sans", "PingFang SC", sans-serif;
 }
 
+/*
+ * 夜间：同一套名字换一组值，页面里的 bg-washi / text-sumi 都不用改。
+ * 纸变成夜里的墨色，墨变成纸色；藍和朱提亮一些，按钮上的 text-washi
+ * 落在亮色上照样看得清。data-theme 由 src/theme.ts 和 public/theme-init.js 设。
+ */
+:root[data-theme="dark"] {
+  --color-washi: #161614;
+  --color-sumi: #e6e2da;
+  --color-ai: #8eaad4;
+  --color-hai: #8f8b84;
+  --color-shu: #e07a5f;
+  --color-usu: #2e2c29;
+
+  color-scheme: dark;
+}
+
+/* 滚过头（回弹）时露出来的是 body，和页面同色 */
+body {
+  background-color: var(--color-washi);
+}
+
 /* 振り仮名：假名比正文小一半，带注音的行需要更宽的行距才不会挤到上一行 */
 ruby > rt {
   font-size: 0.5em;
