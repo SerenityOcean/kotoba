@@ -91,7 +91,7 @@ export default function ExamsPage() {
         !error && <p className="text-sm text-hai">加载中…</p>
       ) : exams.length === 0 ? (
         <p className="py-10 text-center text-sm leading-relaxed text-hai">
-          还没有卷子。把读解真题的 .docx 导进来，就能按卷面作答、交卷判分。
+          还没有卷子。把读解、言語知識真题的 .docx 导进来，就能逐题练：选完马上对答案，还能给每道题标难度。
         </p>
       ) : (
         <ul>

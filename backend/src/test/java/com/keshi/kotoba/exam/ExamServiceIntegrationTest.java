@@ -88,6 +88,27 @@ class ExamServiceIntegrationTest {
     }
 
     @Test
+    @DisplayName("难度标了能改能去掉；卷子里没有的题号不收；别人标不了")
+    void marksQuestions() {
+        long id = examService.create(userId, "卷子", content()).id();
+        assertEquals(Map.of(), examService.find(userId, id).marks());
+
+        examService.mark(userId, id, 55, 3);
+        examService.mark(userId, id, 56, 1);
+        examService.mark(userId, id, 55, 2);
+        assertEquals(Map.of(55, 2, 56, 1), examService.find(userId, id).marks());
+
+        examService.unmark(userId, id, 56);
+        examService.unmark(userId, id, 57);
+        assertEquals(Map.of(55, 2), examService.find(userId, id).marks());
+
+        assertThrows(InvalidExamException.class, () -> examService.mark(userId, id, 99, 1));
+        long other = createUser();
+        assertThrows(ExamNotFoundException.class, () -> examService.mark(other, id, 55, 1));
+        assertThrows(ExamNotFoundException.class, () -> examService.unmark(other, id, 55));
+    }
+
+    @Test
     @DisplayName("题号重复的卷子不收")
     void rejectsDuplicateNumbers() {
         ExamContent duplicated = new ExamContent(List.of(), List.of(new ExamContent.Section("", "", List.of(

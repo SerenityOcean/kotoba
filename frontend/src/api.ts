@@ -634,7 +634,11 @@ export interface Exam {
   createdAt: string
   /** 历次交卷，最近的在前 */
   attempts: ExamAttempt[]
+  /** 自己标的难度：题号 → 1 简单、2 一般、3 难。没标的题不在里面 */
+  marks: Record<string, MarkLevel>
 }
+
+export type MarkLevel = 1 | 2 | 3
 
 export async function fetchExams(): Promise<ExamSummary[]> {
   return handle<ExamSummary[]>(await apiFetch('/api/exams'))
@@ -660,7 +664,7 @@ export async function deleteExam(id: number): Promise<void> {
   }
 }
 
-/** 交卷。判分在后端，按卷子里存的答案算。 */
+/** 做完一遍记一次成绩。判分在后端，按卷子里存的答案算。 */
 export async function submitExam(
   id: number,
   answers: Record<number, number>,
@@ -672,6 +676,27 @@ export async function submitExam(
     body: JSON.stringify({ answers, elapsedSeconds }),
   })
   return handle<ExamAttempt>(res)
+}
+
+/** 给一道题标难度；level 为 null 是去掉标记。 */
+export async function markQuestion(
+  id: number,
+  number: number,
+  level: MarkLevel | null,
+): Promise<void> {
+  const res = await apiFetch(
+    `/api/exams/${id}/marks/${number}`,
+    level === null
+      ? { method: 'DELETE' }
+      : {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ level }),
+        },
+  )
+  if (!res.ok) {
+    throw await toError(res, `保存失败：${res.status}`)
+  }
 }
 
 // ---- 登录 ----------------------------------------------------------------

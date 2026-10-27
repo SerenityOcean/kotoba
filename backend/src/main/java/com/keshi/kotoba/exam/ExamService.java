@@ -24,12 +24,14 @@ public class ExamService {
 
     private final ExamRepository examRepository;
     private final ExamAttemptRepository attemptRepository;
+    private final ExamMarkRepository markRepository;
     private final ObjectMapper json;
 
     public ExamService(ExamRepository examRepository, ExamAttemptRepository attemptRepository,
-                       ObjectMapper json) {
+                       ExamMarkRepository markRepository, ObjectMapper json) {
         this.examRepository = examRepository;
         this.attemptRepository = attemptRepository;
+        this.markRepository = markRepository;
         this.json = json;
     }
 
@@ -77,10 +79,14 @@ public class ExamService {
     @Transactional(readOnly = true)
     public ExamResponse find(Long userId, Long id) {
         Exam exam = load(userId, id);
+        Map<Integer, Integer> marks = new TreeMap<>();
+        for (ExamMark mark : markRepository.findByExamId(id)) {
+            marks.put(mark.getQuestionNumber(), mark.getLevel());
+        }
         return response(exam, attemptRepository
                 .findByExamIdAndOwnerIdOrderBySubmittedAtDesc(id, userId).stream()
                 .map(this::attemptResponse)
-                .toList());
+                .toList(), marks);
     }
 
     @Transactional
@@ -102,7 +108,8 @@ public class ExamService {
         }
         int graded = (int) questions.stream().filter(q -> q.answer() != null).count();
         return response(examRepository.save(
-                new Exam(userId, title, body, questions.size(), graded, Instant.now())), List.of());
+                new Exam(userId, title, body, questions.size(), graded, Instant.now())),
+                List.of(), Map.of());
     }
 
     @Transactional
@@ -123,6 +130,26 @@ public class ExamService {
         return attemptResponse(attempt);
     }
 
+    /** 给一道题标难度，标过的就改成新的。 */
+    @Transactional
+    public void mark(Long userId, Long examId, int number, int level) {
+        Exam exam = load(userId, examId);
+        if (content(exam).questions().stream().noneMatch(q -> q.number() == number)) {
+            throw new InvalidExamException("卷子里没有問" + number);
+        }
+        markRepository.findByExamIdAndQuestionNumber(examId, number)
+                .ifPresentOrElse(
+                        mark -> mark.mark(level, Instant.now()),
+                        () -> markRepository.save(new ExamMark(examId, number, level, Instant.now())));
+    }
+
+    /** 去掉一道题的难度标记。本来就没标也不报错。 */
+    @Transactional
+    public void unmark(Long userId, Long examId, int number) {
+        load(userId, examId);
+        markRepository.deleteByExamIdAndQuestionNumber(examId, number);
+    }
+
     private Exam load(Long userId, Long id) {
         return examRepository.findByIdAndOwnerId(id, userId)
                 .orElseThrow(() -> new ExamNotFoundException(id));
@@ -132,9 +159,10 @@ public class ExamService {
         return json.readValue(exam.getContent(), ExamContent.class);
     }
 
-    private ExamResponse response(Exam exam, List<AttemptResponse> attempts) {
+    private ExamResponse response(Exam exam, List<AttemptResponse> attempts,
+                                  Map<Integer, Integer> marks) {
         return new ExamResponse(exam.getId(), exam.getTitle(), content(exam),
-                exam.getQuestionCount(), exam.getGradedCount(), exam.getCreatedAt(), attempts);
+                exam.getQuestionCount(), exam.getGradedCount(), exam.getCreatedAt(), attempts, marks);
     }
 
     private AttemptResponse attemptResponse(ExamAttempt attempt) {
