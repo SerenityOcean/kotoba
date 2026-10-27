@@ -22,7 +22,8 @@ class AnalysisSchemaTest {
                 "sentences", "original", "translation", "verbs", "grammarPoints",
                 "surface", "dictionaryForm", "reading", "form", "explanation", "meaning",
                 "pattern", "example", "transitivity", "usage",
-                "loanwords", "english", "origin"}) {
+                "loanwords", "english", "origin",
+                "words", "partOfSpeech", "note"}) {
             assertTrue(schema.contains("\"" + field + "\""), "schema 里缺字段：" + field);
         }
 
@@ -33,5 +34,6 @@ class AnalysisSchemaTest {
         assertTrue(schema.contains("\"required\":[\"sentences\"]"), "顶层 required 没加上");
         assertTrue(schema.contains("\"dictionaryForm\",\"explanation\""), "动词那层 required 没加上");
         assertTrue(schema.contains("\"english\",\"meaning\",\"origin\""), "外来语那层 required 没加上");
+        assertTrue(schema.contains("\"meaning\",\"note\",\"partOfSpeech\""), "名词那层 required 没加上");
     }
 }

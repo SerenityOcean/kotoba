@@ -66,6 +66,12 @@ export function useAnalysis() {
               .join('｜'),
           }),
         )
+        s.words?.forEach((w, j) =>
+          map.set(`${i}-${k}n${j}`, {
+            front: w.surface,
+            back: [w.reading, w.partOfSpeech, w.meaning, w.note].filter(Boolean).join('｜'),
+          }),
+        )
         s.loanwords?.forEach((w, j) =>
           map.set(`${i}-${k}w${j}`, {
             front: w.surface,
@@ -134,6 +140,7 @@ export function useAnalysis() {
               const nextSelected = new Set(prev)
               analysis.sentences.forEach((s, k) => {
                 s.verbs?.forEach((_, j) => nextSelected.add(`${index}-${k}v${j}`))
+                s.words?.forEach((_, j) => nextSelected.add(`${index}-${k}n${j}`))
                 s.loanwords?.forEach((_, j) => nextSelected.add(`${index}-${k}w${j}`))
                 s.grammarPoints?.forEach((_, j) => nextSelected.add(`${index}-${k}g${j}`))
               })
