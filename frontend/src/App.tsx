@@ -7,6 +7,8 @@ import AnalyzePage from './pages/AnalyzePage'
 import ArticlesPage from './pages/ArticlesPage'
 import ArticlePage from './pages/ArticlePage'
 import ArticleEditPage from './pages/ArticleEditPage'
+import ExamsPage from './pages/ExamsPage'
+import ExamPage from './pages/ExamPage'
 import LoginPage from './pages/LoginPage'
 import HiganPage from './pages/HiganPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
@@ -57,8 +59,8 @@ function Kotoba() {
     }
   }, [theme])
 
-  // 读文章时给宽屏留出第二栏放拆解面板；其余页面维持易读的窄栏宽度
-  const wide = /^\/reading\/[^/]+$/.test(location.pathname)
+  // 读文章、做卷子时给宽屏留出第二栏放拆解面板；其余页面维持易读的窄栏宽度
+  const wide = /^\/(?:reading|exam)\/[^/]+$/.test(location.pathname)
   // 登录页只有一块内容，没有导航在右边配重，靠左排会明显偏心 —— 单独收窄居中
   // 找回密码、邮件链接落地页同理；但已登录的人点开邮件链接时照常显示导航
   const centered = !user && SIGNED_OUT_PAGES.includes(location.pathname)
@@ -90,6 +92,7 @@ function Kotoba() {
                   首页
                 </NavItem>
                 <NavItem to="/reading">阅读</NavItem>
+                <NavItem to="/exam">应试</NavItem>
                 <NavItem to="/analyze">拆解</NavItem>
                 <NavItem to="/cards">卡片</NavItem>
                 <NavItem to="/higan">彼岸</NavItem>
@@ -154,6 +157,22 @@ function Kotoba() {
               element={
                 <RequireAuth>
                   <ArticleEditPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/exam"
+              element={
+                <RequireAuth>
+                  <ExamsPage />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/exam/:id"
+              element={
+                <RequireAuth>
+                  <ExamPage />
                 </RequireAuth>
               }
             />

@@ -31,8 +31,16 @@ export async function readBatchFile(file: File): Promise<BatchFile> {
   return { name, passages: splitPassages(lines) }
 }
 
-/** 每段一行。只要文字：w:t 拼起来，w:tab 当制表符，w:br 当换行。 */
-async function readDocxLines(file: File): Promise<string[]> {
+/**
+ * 每段一行。只要文字：w:t 拼起来，w:tab 当制表符，w:br 当换行。
+ *
+ * 给了 underline 就把带下划线的字用这对记号括起来 —— 真题里「下線部」
+ * 是题目的一部分，光要文字就丢了。连着几个带下划线的 run 并成一对。
+ */
+export async function readDocxLines(
+  file: File,
+  underline?: readonly [string, string],
+): Promise<string[]> {
   const { default: JSZip } = await import('jszip')
   const zip = await JSZip.loadAsync(file).catch(() => {
     throw new Error(`${file.name} 不是有效的 .docx 文件`)
@@ -43,13 +51,39 @@ async function readDocxLines(file: File): Promise<string[]> {
   const doc = new DOMParser().parseFromString(xml, 'application/xml')
   return Array.from(doc.getElementsByTagNameNS(W, 'p'), (p) => {
     let text = ''
-    for (const node of Array.from(p.getElementsByTagNameNS(W, '*'))) {
-      if (node.localName === 't') text += node.textContent ?? ''
-      else if (node.localName === 'tab') text += '\t'
-      else if (node.localName === 'br' || node.localName === 'cr') text += '\n'
+    let open = false
+    const close = () => {
+      if (open && underline) text += underline[1]
+      open = false
     }
+    for (const node of Array.from(p.getElementsByTagNameNS(W, '*'))) {
+      if (node.localName === 't') {
+        const value = node.textContent ?? ''
+        if (underline && value !== '') {
+          if (!isUnderlined(node.parentElement)) close()
+          else if (!open) {
+            text += underline[0]
+            open = true
+          }
+        }
+        text += value
+      } else if (node.localName === 'tab') text += '\t'
+      else if (node.localName === 'br' || node.localName === 'cr') {
+        // 记号不跨行：换行前先收口
+        close()
+        text += '\n'
+      }
+    }
+    close()
     return text
   }).flatMap((text) => text.split('\n'))
+}
+
+/** run 自己的格式里有 <w:u>，而且不是 w:val="none" */
+function isUnderlined(run: Element | null): boolean {
+  const props = run && Array.from(run.children).find((child) => child.localName === 'rPr')
+  const u = props && Array.from(props.children).find((child) => child.localName === 'u')
+  return !!u && u.getAttributeNS(W, 'val') !== 'none'
 }
 
 export function splitPassages(lines: string[]): string[] {

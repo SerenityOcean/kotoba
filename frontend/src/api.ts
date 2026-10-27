@@ -1,3 +1,5 @@
+import type { ExamContent } from './exam'
+
 export interface Card {
   id: number
   deckId: number
@@ -585,6 +587,78 @@ export function splitForFurigana(text: string, maxLength = 800): Piece[] {
   })
 
   return pieces
+}
+
+// ---- 应试 ----------------------------------------------------------------
+
+/** 一次交卷。answers 的键是题号；correct / graded 是答对的题数 / 有答案的题数。 */
+export interface ExamAttempt {
+  id: number
+  answers: Record<string, number>
+  correct: number
+  graded: number
+  elapsedSeconds: number
+  submittedAt: string
+}
+
+export interface ExamSummary {
+  id: number
+  title: string
+  questionCount: number
+  gradedCount: number
+  createdAt: string
+  attemptCount: number
+  /** 最近一次交卷，没做过是 null */
+  lastAttempt: ExamAttempt | null
+}
+
+export interface Exam {
+  id: number
+  title: string
+  content: ExamContent
+  questionCount: number
+  gradedCount: number
+  createdAt: string
+  /** 历次交卷，最近的在前 */
+  attempts: ExamAttempt[]
+}
+
+export async function fetchExams(): Promise<ExamSummary[]> {
+  return handle<ExamSummary[]>(await apiFetch('/api/exams'))
+}
+
+export async function fetchExam(id: number): Promise<Exam> {
+  return handle<Exam>(await apiFetch(`/api/exams/${id}`))
+}
+
+export async function createExam(title: string, content: ExamContent): Promise<Exam> {
+  const res = await apiFetch('/api/exams', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, content }),
+  })
+  return handle<Exam>(res)
+}
+
+export async function deleteExam(id: number): Promise<void> {
+  const res = await apiFetch(`/api/exams/${id}`, { method: 'DELETE' })
+  if (!res.ok) {
+    throw await toError(res, `删除失败：${res.status}`)
+  }
+}
+
+/** 交卷。判分在后端，按卷子里存的答案算。 */
+export async function submitExam(
+  id: number,
+  answers: Record<number, number>,
+  elapsedSeconds: number,
+): Promise<ExamAttempt> {
+  const res = await apiFetch(`/api/exams/${id}/attempts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answers, elapsedSeconds }),
+  })
+  return handle<ExamAttempt>(res)
 }
 
 // ---- 登录 ----------------------------------------------------------------
