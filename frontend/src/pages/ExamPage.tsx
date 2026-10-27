@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { fetchExam, submitExam } from '../api'
-import type { Exam, ExamAttempt } from '../api'
+import { fetchExam, markQuestion, submitExam } from '../api'
+import type { Exam, ExamAttempt, MarkLevel } from '../api'
 import { useAuth } from '../auth-context'
 import ExamText from '../components/ExamText'
 import AnalysisPanel from '../components/AnalysisPanel'
@@ -13,17 +13,28 @@ import type { ExamBlock, ExamPassage, ExamQuestion } from '../exam'
 /** 振り仮名开着还是关着。默认关 —— 考场上没有注音 */
 const FURIGANA_KEY = 'kotoba:exam-furigana'
 
-/** 作答到一半的答案和用时，存在这台设备上：不小心关了页面回来还在 */
+/** 三档难度。颜色只用在选中的那一档和底部题号的小点上 */
+const LEVELS: { level: MarkLevel; label: string; on: string; dot: string }[] = [
+  { level: 1, label: '简单', on: 'border-ai bg-ai text-washi', dot: 'bg-ai' },
+  { level: 2, label: '一般', on: 'border-hai bg-hai text-washi', dot: 'bg-hai' },
+  { level: 3, label: '难', on: 'border-shu bg-shu text-washi', dot: 'bg-shu' },
+]
+
+/**
+ * 做到一半的答案和用时，存在这台设备上：不小心关了页面回来还在。
+ * recorded 是做完一遍后记下的那次成绩，有了就不再重复记。
+ */
 interface Draft {
   answers: Record<number, number>
   elapsed: number
+  recorded: number | null
 }
 
 function readDraft(key: string): Draft | null {
   try {
     const draft = JSON.parse(localStorage.getItem(key) ?? 'null')
     if (draft && typeof draft.elapsed === 'number' && typeof draft.answers === 'object') {
-      return draft as Draft
+      return { ...draft, recorded: typeof draft.recorded === 'number' ? draft.recorded : null }
     }
   } catch {
     // 读不出来就当没有
@@ -48,13 +59,18 @@ function readFurigana(): boolean {
   }
 }
 
-/** 这题判得怎么样。没答案的题不判 */
-type Verdict = 'right' | 'wrong' | 'ungraded'
+/** 这题判得怎么样。没答案的题不判，没做的题还没有结果 */
+type Verdict = 'right' | 'wrong' | 'ungraded' | 'open'
 
-function verdict(question: ExamQuestion, attempt: ExamAttempt): Verdict {
+function verdict(question: ExamQuestion, answers: Record<number, number>): Verdict {
+  const chosen = answers[question.number]
+  if (chosen === undefined) return 'open'
   if (question.answer === null) return 'ungraded'
-  return attempt.answers[question.number] === question.answer ? 'right' : 'wrong'
+  return chosen === question.answer ? 'right' : 'wrong'
 }
+
+/** 只看哪些题：错题，或者标了某一档难度的 */
+type Filter = 'wrong' | MarkLevel | null
 
 /**
  * 做一份卷子。换卷子时整个重来（key 是 id）：答案、计时、草稿都是这一份的。
@@ -65,9 +81,11 @@ export default function ExamPage() {
 }
 
 /**
- * 卷面按考场的顺序排：大题 → 本文 → 小题，选项点了就算选上。底下钉着一条
- * 答题卡：题号、已答几题、用时、交卷。交卷后后端判分，卷面换成对答案的样子，
- * 顶上是成绩和各大题的得分。
+ * 逐题练：选项点下去马上对答案，这题就定下了。做过的题下面可以标难度
+ * （简单 / 一般 / 难），一点就存到后端，重做也还在。全做完自动记一次成绩。
+ *
+ * 卷面还是按原卷的顺序排：大题 → 本文 → 小题。底下钉着一条题号，
+ * 对错和难度一眼看得到，可以只看错题或某一档难度的题。
  *
  * 和阅读页一样，选中任意一段（本文、题干、选项都行）就能就地拆解。
  */
@@ -80,12 +98,11 @@ function ExamPaper({ examId }: { examId: number }) {
     () => readDraft(draftKey)?.answers ?? {},
   )
   const [elapsed, setElapsed] = useState(() => readDraft(draftKey)?.elapsed ?? 0)
-  // 正在看哪一次交卷的结果；null = 在作答
-  const [review, setReview] = useState<ExamAttempt | null>(null)
-  const [onlyWrong, setOnlyWrong] = useState(false)
-  // 还有题没答就交卷，先问一句
-  const [confirming, setConfirming] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
+  const [recorded, setRecorded] = useState<number | null>(
+    () => readDraft(draftKey)?.recorded ?? null,
+  )
+  const [marks, setMarks] = useState<Record<number, MarkLevel>>({})
+  const [filter, setFilter] = useState<Filter>(null)
   const [furigana, setFurigana] = useState(readFurigana)
   const selection = useSelectionAnalysis()
   const { showPanel } = selection
@@ -93,26 +110,32 @@ function ExamPaper({ examId }: { examId: number }) {
   useEffect(() => {
     window.scrollTo(0, 0)
     fetchExam(examId)
-      .then(setExam)
+      .then((exam) => {
+        setExam(exam)
+        setMarks(exam.marks)
+      })
       .catch((e) => setError(e instanceof Error ? e.message : '加载失败'))
   }, [examId])
 
-  const answering = exam !== null && review === null
+  const practising = exam !== null && recorded === null
 
-  // 只在作答、而且页面在前台时走表：切去别的标签页查东西不算时间
+  // 做完之前、页面在前台时走表：切去别的标签页查东西不算时间。表不显示，只记进成绩
   useEffect(() => {
-    if (!answering) return
+    if (!practising) return
     const timer = setInterval(() => {
       if (document.visibilityState === 'visible') setElapsed((s) => s + 1)
     }, 1000)
     return () => clearInterval(timer)
-  }, [answering])
+  }, [practising])
 
-  // 一题没答就不留草稿：只是点开看一眼，下次进来计时从零开始
+  // 一题没做就不留草稿：只是点开看一眼，下次进来计时从零开始
   useEffect(() => {
-    if (!answering) return
-    writeDraft(draftKey, Object.keys(answers).length > 0 ? { answers, elapsed } : null)
-  }, [answering, draftKey, answers, elapsed])
+    if (!exam) return
+    writeDraft(
+      draftKey,
+      Object.keys(answers).length > 0 ? { answers, elapsed, recorded } : null,
+    )
+  }, [exam, draftKey, answers, elapsed, recorded])
 
   const questions = useMemo(() => (exam ? examQuestions(exam.content) : []), [exam])
 
@@ -120,42 +143,78 @@ function ExamPaper({ examId }: { examId: number }) {
   if (!exam) return <p className="text-sm text-hai">加载中…</p>
 
   const answeredCount = questions.filter((q) => answers[q.number] !== undefined).length
-  const hasDraft = answeredCount > 0
+  const finished = answeredCount === questions.length
+  const attempt = recorded === null ? null : (exam.attempts.find((a) => a.id === recorded) ?? null)
 
-  function choose(number: number, choice: number) {
-    setAnswers((prev) => ({ ...prev, [number]: choice }))
-    setConfirming(false)
+  const counts = {
+    right: questions.filter((q) => verdict(q, answers) === 'right').length,
+    wrong: questions.filter((q) => verdict(q, answers) === 'wrong').length,
+    levels: LEVELS.map(({ level }) => questions.filter((q) => marks[q.number] === level).length),
   }
+  // 筛到一题都不剩（最后一道标记去掉了）就回到全部
+  const active =
+    filter === 'wrong'
+      ? counts.wrong > 0
+        ? filter
+        : null
+      : filter !== null && counts.levels[filter - 1] > 0
+        ? filter
+        : null
+  const matches = (question: ExamQuestion) =>
+    active === null ||
+    (active === 'wrong'
+      ? verdict(question, answers) === 'wrong'
+      : marks[question.number] === active)
 
-  async function submit() {
+  async function record(final: Record<number, number>) {
     if (!exam) return
-    if (answeredCount < questions.length && !confirming) {
-      setConfirming(true)
-      return
-    }
-    setSubmitting(true)
     setError(null)
     try {
-      const attempt = await submitExam(exam.id, answers, elapsed)
-      setExam({ ...exam, attempts: [attempt, ...exam.attempts] })
-      setReview(attempt)
-      setConfirming(false)
-      setAnswers({})
-      setElapsed(0)
-      writeDraft(draftKey, null)
-      window.scrollTo(0, 0)
+      const attempt = await submitExam(exam.id, final, elapsed)
+      setExam((current) => current && { ...current, attempts: [attempt, ...current.attempts] })
+      setRecorded(attempt.id)
     } catch (e) {
-      setError(e instanceof Error ? e.message : '交卷失败')
-    } finally {
-      setSubmitting(false)
+      setError(e instanceof Error ? e.message : '成绩没记上')
     }
   }
 
-  function retry() {
-    setReview(null)
-    setOnlyWrong(false)
+  // 选下去就定了：马上对答案，不能再改
+  function choose(number: number, choice: number) {
+    if (answers[number] !== undefined) return
+    const next = { ...answers, [number]: choice }
+    setAnswers(next)
+    if (questions.every((q) => next[q.number] !== undefined)) void record(next)
+  }
+
+  // 再点一下选中的那档就是去掉。先改界面，存失败了再改回来
+  function mark(number: number, level: MarkLevel) {
+    if (!exam) return
+    const previous = marks[number]
+    const next = previous === level ? null : level
+    setMarks((current) => {
+      const updated = { ...current }
+      if (next === null) delete updated[number]
+      else updated[number] = next
+      return updated
+    })
+    setError(null)
+    markQuestion(exam.id, number, next).catch((e) => {
+      setMarks((current) => {
+        const restored = { ...current }
+        if (previous === undefined) delete restored[number]
+        else restored[number] = previous
+        return restored
+      })
+      setError(e instanceof Error ? e.message : '难度没存上')
+    })
+  }
+
+  function restart() {
     setAnswers({})
     setElapsed(0)
+    setRecorded(null)
+    setFilter(null)
+    setError(null)
     window.scrollTo(0, 0)
   }
 
@@ -170,9 +229,6 @@ function ExamPaper({ examId }: { examId: number }) {
   }
 
   const last = exam.attempts[0] ?? null
-  // 只看错题：整篇的题都对了（或者没答案）就不显示这篇
-  const shown = (passage: ExamPassage) =>
-    !review || !onlyWrong || passage.questions.some((q) => verdict(q, review) === 'wrong')
 
   return (
     <div
@@ -196,34 +252,23 @@ function ExamPaper({ examId }: { examId: number }) {
           <span>
             {exam.questionCount} 题
             {exam.gradedCount < exam.questionCount &&
-              `，${exam.questionCount - exam.gradedCount} 题没有答案不计分`}
+              `，${exam.questionCount - exam.gradedCount} 题没有答案`}
           </span>
+          {last && (
+            <span className="tabular-nums">
+              做完过 {exam.attempts.length} 遍，上次 {last.correct}/{last.graded}
+            </span>
+          )}
           <button onClick={toggleFurigana} className="transition hover:text-ai">
             {furigana ? '隐藏振り仮名' : '显示振り仮名'}
           </button>
-          {!review && last && (
-            <button onClick={() => setReview(last)} className="transition hover:text-ai">
-              上次 {last.correct}/{last.graded}，看结果
-            </button>
-          )}
         </p>
-
-        {review && (
-          <ScoreCard
-            exam={exam}
-            attempt={review}
-            onSelect={(attempt) => {
-              setReview(attempt)
-              setOnlyWrong(false)
-            }}
-          />
-        )}
 
         {/* 关掉振り仮名要用 display: none —— 只是藏起来的话，读音比汉字长的词
             （学習者 がくしゅうしゃ）汉字之间还会被撑开。行高是固定的，切换时不会上下跳 */}
         <div className={furigana ? '' : '[&_rt]:hidden'}>
           {exam.content.sections.map((section, s) => {
-            const passages = section.passages.filter(shown)
+            const passages = section.passages.filter((p) => p.questions.some(matches))
             if (passages.length === 0) return null
             const numbers = section.passages.flatMap((p) => p.questions.map((q) => q.number))
             return (
@@ -242,9 +287,11 @@ function ExamPaper({ examId }: { examId: number }) {
                   <PassageView
                     key={p}
                     passage={passage}
-                    answers={review ? review.answers : answers}
-                    review={review}
+                    questions={passage.questions.filter(matches)}
+                    answers={answers}
+                    marks={marks}
                     onChoose={choose}
+                    onMark={mark}
                   />
                 ))}
               </section>
@@ -252,22 +299,21 @@ function ExamPaper({ examId }: { examId: number }) {
           })}
         </div>
 
-        <AnswerSheet
+        {attempt && <ScoreCard exam={exam} attempt={attempt} />}
+
+        <PracticeBar
           exam={exam}
           answers={answers}
+          marks={marks}
           answeredCount={answeredCount}
-          elapsed={elapsed}
-          review={review}
+          counts={counts}
+          filter={active}
+          matches={matches}
+          onFilter={(next) => setFilter(next === active ? null : next)}
           selection={selection}
-          onlyWrong={onlyWrong}
-          onToggleOnlyWrong={() => setOnlyWrong((v) => !v)}
-          confirming={confirming}
-          submitting={submitting}
           error={error}
-          onSubmit={submit}
-          onCancelSubmit={() => setConfirming(false)}
-          resumeLabel={hasDraft ? '回去接着做' : '再做一次'}
-          onResume={hasDraft ? () => setReview(null) : retry}
+          onRetryRecord={finished && recorded === null ? () => record(answers) : null}
+          onRestart={restart}
         />
       </div>
 
@@ -276,16 +322,8 @@ function ExamPaper({ examId }: { examId: number }) {
   )
 }
 
-/** 交卷后顶上那一块：答对几题、正确率、用时，各大题的得分，历次成绩。 */
-function ScoreCard({
-  exam,
-  attempt,
-  onSelect,
-}: {
-  exam: Exam
-  attempt: ExamAttempt
-  onSelect: (attempt: ExamAttempt) => void
-}) {
+/** 做完一遍后接在卷面最后：答对几题、正确率、用时，各大题的得分，历次成绩。 */
+function ScoreCard({ exam, attempt }: { exam: Exam; attempt: ExamAttempt }) {
   const rate = attempt.graded > 0 ? Math.round((attempt.correct / attempt.graded) * 100) : 0
   const ordinal = exam.attempts.length - exam.attempts.findIndex((a) => a.id === attempt.id)
   const sections = exam.content.sections.map((section) => {
@@ -294,15 +332,15 @@ function ScoreCard({
       .filter((q) => q.answer !== null)
     return {
       name: section.name || section.label,
-      right: graded.filter((q) => verdict(q, attempt) === 'right').length,
+      right: graded.filter((q) => verdict(q, attempt.answers) === 'right').length,
       total: graded.length,
     }
   })
 
   return (
-    <section className="mt-10 border-y border-usu py-6">
+    <section className="mt-16 border-y border-usu py-6">
       <p className="text-xs text-hai">
-        第 {ordinal} 次 ·{' '}
+        做完了 · 第 {ordinal} 遍 ·{' '}
         {new Date(attempt.submittedAt).toLocaleString('zh-CN', {
           month: 'numeric',
           day: 'numeric',
@@ -347,15 +385,14 @@ function ScoreCard({
         <p className="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs text-hai">
           历次
           {exam.attempts.toReversed().map((a) => (
-            <button
+            <span
               key={a.id}
-              onClick={() => onSelect(a)}
-              className={`tabular-nums transition ${
-                a.id === attempt.id ? 'text-sumi underline underline-offset-4' : 'hover:text-sumi'
+              className={`tabular-nums ${
+                a.id === attempt.id ? 'text-sumi underline underline-offset-4' : ''
               }`}
             >
               {a.correct}/{a.graded}
-            </button>
+            </span>
           ))}
         </p>
       )}
@@ -368,18 +405,21 @@ function isParagraph(text: string): boolean {
   return text.length >= 40 && !/^[・「『（(［[\d０-９①-⑳＊※]/.test(text)
 }
 
-/** 一篇本文：正文，连着的几条注释并成一组，后面跟它的小题。 */
+/** 一篇本文：正文，连着的几条注释并成一组，后面跟它的小题（筛选时只有筛中的那几题）。 */
 function PassageView({
   passage,
+  questions,
   answers,
-  review,
+  marks,
   onChoose,
+  onMark,
 }: {
   passage: ExamPassage
-  /** 作答时是正在填的答案，对答案时是那次交的 */
+  questions: ExamQuestion[]
   answers: Record<number, number>
-  review: ExamAttempt | null
+  marks: Record<number, MarkLevel>
   onChoose: (number: number, choice: number) => void
+  onMark: (number: number, level: MarkLevel) => void
 }) {
   const groups: (ExamBlock | ExamBlock[])[] = []
   for (const block of passage.blocks) {
@@ -416,13 +456,15 @@ function PassageView({
       </div>
 
       <div className="mt-10 max-w-[40rem] space-y-9">
-        {passage.questions.map((question) => (
+        {questions.map((question) => (
           <QuestionView
             key={question.number}
             question={question}
             chosen={answers[question.number]}
-            review={review}
+            result={verdict(question, answers)}
+            level={marks[question.number]}
             onChoose={(choice) => onChoose(question.number, choice)}
+            onMark={(level) => onMark(question.number, level)}
           />
         ))}
       </div>
@@ -472,15 +514,19 @@ function Block({ block, first }: { block: ExamBlock; first: boolean }) {
 function QuestionView({
   question,
   chosen,
-  review,
+  result,
+  level,
   onChoose,
+  onMark,
 }: {
   question: ExamQuestion
   chosen: number | undefined
-  review: ExamAttempt | null
+  result: Verdict
+  level: MarkLevel | undefined
   onChoose: (choice: number) => void
+  onMark: (level: MarkLevel) => void
 }) {
-  const result = review ? verdict(question, review) : null
+  const revealed = result !== 'open'
 
   return (
     <section id={`q-${question.number}`} className="scroll-mt-8">
@@ -518,14 +564,34 @@ function QuestionView({
             text={choice}
             chosen={chosen === i + 1}
             answer={question.answer}
-            reviewing={review !== null}
+            revealed={revealed}
             onChoose={() => onChoose(i + 1)}
           />
         ))}
       </div>
 
-      {review && question.answer === null && (
-        <p className="mt-2 pl-3 text-xs text-hai">这题讲义里没给答案，不计分</p>
+      {result === 'ungraded' && (
+        <p className="mt-2 pl-3 text-xs text-hai">这题讲义里没给答案</p>
+      )}
+
+      {/* 做过的、或者以前标过的题才显示：没做的题还谈不上难不难 */}
+      {(revealed || level !== undefined) && (
+        <div data-skip className="mt-3 flex items-center gap-2 pl-3 text-xs text-hai">
+          <span className="mr-1">难度</span>
+          {LEVELS.map(({ level: value, label, on }) => (
+            <button
+              key={value}
+              onClick={() => onMark(value)}
+              aria-pressed={level === value}
+              title={level === value ? '再点一下去掉' : `标成${label}，会保存`}
+              className={`rounded-sm border px-2.5 py-0.5 transition ${
+                level === value ? on : 'border-usu hover:border-hai hover:text-sumi'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       )}
     </section>
   )
@@ -537,7 +603,7 @@ function Choice({
   text,
   chosen,
   answer,
-  reviewing,
+  revealed,
   onChoose,
 }: {
   name: string
@@ -545,22 +611,23 @@ function Choice({
   text: string
   chosen: boolean
   answer: number | null
-  reviewing: boolean
+  /** 这题做过了：亮出正解，不能再改 */
+  revealed: boolean
   onChoose: () => void
 }) {
-  const isAnswer = reviewing && answer === number
-  const wrong = reviewing && chosen && answer !== null && !isAnswer
+  const isAnswer = revealed && answer === number
+  const wrong = revealed && chosen && answer !== null && !isAnswer
 
   const badge = isAnswer
     ? 'border-ai bg-ai text-washi'
     : wrong
       ? 'border-shu bg-shu text-washi'
       : chosen
-        ? reviewing
-          ? 'border-sumi text-sumi'
-          : 'border-ai bg-ai text-washi'
-        : 'border-usu text-hai group-hover:border-hai'
-  const tone = isAnswer ? 'text-ai' : wrong ? 'text-shu' : reviewing ? 'text-hai' : ''
+        ? 'border-sumi text-sumi'
+        : revealed
+          ? 'border-usu text-hai'
+          : 'border-usu text-hai group-hover:border-hai'
+  const tone = isAnswer ? 'text-ai' : wrong ? 'text-shu' : revealed ? 'text-hai' : ''
 
   return (
     <label
@@ -569,14 +636,14 @@ function Choice({
         if (window.getSelection()?.isCollapsed === false) e.preventDefault()
       }}
       className={`group flex items-baseline gap-3 rounded-sm px-3 py-1.5 transition has-[:focus-visible]:ring-1 has-[:focus-visible]:ring-ai ${
-        reviewing ? '' : 'cursor-pointer hover:bg-usu/40'
+        revealed ? '' : 'cursor-pointer hover:bg-usu/40'
       }`}
     >
       <input
         type="radio"
         name={name}
         checked={chosen}
-        disabled={reviewing}
+        disabled={revealed}
         onChange={onChoose}
         className="sr-only"
       />
@@ -596,88 +663,100 @@ function Choice({
 }
 
 /**
- * 钉在底部的答题卡。作答时：题号（答过的涂上）、已答几题、用时、交卷；
- * 对答案时：题号按对错上色、只看错题、再做一次。选中了一段还没拆，
- * 拆解按钮也放在这一条上。
+ * 钉在底部的一条：题号按对错上色、标了难度的带个小点；做了几题、对了几题；
+ * 只看错题 / 某档难度；重做。选中了一段还没拆，拆解按钮也放在这一条上。
  */
-function AnswerSheet({
+function PracticeBar({
   exam,
   answers,
+  marks,
   answeredCount,
-  elapsed,
-  review,
+  counts,
+  filter,
+  matches,
+  onFilter,
   selection,
-  onlyWrong,
-  onToggleOnlyWrong,
-  confirming,
-  submitting,
   error,
-  onSubmit,
-  onCancelSubmit,
-  resumeLabel,
-  onResume,
+  onRetryRecord,
+  onRestart,
 }: {
   exam: Exam
   answers: Record<number, number>
+  marks: Record<number, MarkLevel>
   answeredCount: number
-  elapsed: number
-  review: ExamAttempt | null
+  counts: { right: number; wrong: number; levels: number[] }
+  filter: Filter
+  matches: (question: ExamQuestion) => boolean
+  onFilter: (filter: Filter) => void
   selection: SelectionAnalysis
-  onlyWrong: boolean
-  onToggleOnlyWrong: () => void
-  confirming: boolean
-  submitting: boolean
   error: string | null
-  onSubmit: () => void
-  onCancelSubmit: () => void
-  resumeLabel: string
-  onResume: () => void
+  /** 做完了但成绩没记上，给个重试；其余时候是 null */
+  onRetryRecord: (() => void) | null
+  onRestart: () => void
 }) {
   const { pending, showPanel, analyze } = selection
-  const total = exam.questionCount
+  // 重做会清掉这一遍的答案，先问一句
+  const [confirming, setConfirming] = useState(false)
 
   function jump(number: number) {
     document.getElementById(`q-${number}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }
 
   function chip(question: ExamQuestion): string {
-    if (!review) {
-      return answers[question.number] !== undefined
-        ? 'border-ai bg-ai text-washi'
-        : 'border-usu text-hai hover:border-hai'
-    }
-    const result = verdict(question, review)
-    return result === 'right'
-      ? 'border-ai text-ai'
-      : result === 'wrong'
-        ? 'border-shu bg-shu text-washi'
-        : 'border-usu text-hai/60'
+    const tone = {
+      right: 'border-ai text-ai',
+      wrong: 'border-shu bg-shu text-washi',
+      ungraded: 'border-sumi text-sumi',
+      open: 'border-usu text-hai hover:border-hai',
+    }[verdict(question, answers)]
+    return matches(question) ? tone : `${tone} opacity-30`
   }
+
+  const filterButton = (value: Filter, label: string, count: number) =>
+    count > 0 && (
+      <button
+        key={String(value)}
+        onClick={() => onFilter(value)}
+        className={`tabular-nums transition hover:text-sumi ${
+          filter === value ? 'text-sumi underline underline-offset-4' : ''
+        }`}
+      >
+        {label} {count}
+      </button>
+    )
 
   return (
     <div className="sticky bottom-0 z-10 -mx-4 mt-16 border-t border-usu bg-washi px-4 py-3 sm:-mx-8 sm:px-8">
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         {/* 大题之间空开一点，一眼看出哪几题是一道大题 */}
-        <ol className="flex min-w-0 flex-1 basis-full gap-1 overflow-x-auto py-0.5 [scrollbar-width:none] sm:basis-0">
+        <ol className="flex min-w-0 flex-1 basis-full gap-1 overflow-x-auto py-1 [scrollbar-width:none] sm:basis-0">
           {exam.content.sections.map((section, s) =>
             section.passages
               .flatMap((p) => p.questions)
-              .map((question, q, all) => (
-                <li
-                  key={question.number}
-                  className={
-                    q === all.length - 1 && s < exam.content.sections.length - 1 ? 'mr-2.5' : ''
-                  }
-                >
-                  <button
-                    onClick={() => jump(question.number)}
-                    title={`問${question.number}`}
-                    className={`flex h-7 min-w-7 items-center justify-center rounded-sm border px-1 text-[0.7rem] tabular-nums transition ${chip(question)}`}
+              .map((question, q, all) => {
+                const dot = LEVELS.find((l) => l.level === marks[question.number])?.dot
+                return (
+                  <li
+                    key={question.number}
+                    className={
+                      q === all.length - 1 && s < exam.content.sections.length - 1 ? 'mr-2.5' : ''
+                    }
                   >
-                    {question.number}
-                  </button>
-                </li>
-              )),
+                    <button
+                      onClick={() => jump(question.number)}
+                      title={`問${question.number}`}
+                      className={`relative flex h-7 min-w-7 items-center justify-center rounded-sm border px-1 text-[0.7rem] tabular-nums transition ${chip(question)}`}
+                    >
+                      {question.number}
+                      {dot && (
+                        <span
+                          className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ring-1 ring-washi ${dot}`}
+                        />
+                      )}
+                    </button>
+                  </li>
+                )
+              }),
           )}
         </ol>
 
@@ -691,61 +770,49 @@ function AnswerSheet({
             </button>
           )}
 
-          {review ? (
-            <>
-              <span>
-                答对{' '}
-                <span className="font-mincho text-base tabular-nums text-sumi">
-                  {review.correct}
-                </span>{' '}
-                / {review.graded}
-              </span>
-              {review.correct < review.graded && (
+          <span className="tabular-nums">
+            做了 <span className="text-sumi">{answeredCount}</span> / {exam.questionCount}
+            {counts.right + counts.wrong > 0 && (
+              <>
+                ，对 <span className="text-ai">{counts.right}</span>
+              </>
+            )}
+          </span>
+
+          {filterButton('wrong', '错题', counts.wrong)}
+          {LEVELS.map(({ level, label }) => filterButton(level, label, counts.levels[level - 1]))}
+
+          {onRetryRecord && (
+            <button onClick={onRetryRecord} className="text-shu transition hover:opacity-85">
+              重新记成绩
+            </button>
+          )}
+
+          {answeredCount > 0 &&
+            (confirming ? (
+              <>
                 <button
-                  onClick={onToggleOnlyWrong}
-                  className={`transition hover:text-sumi ${onlyWrong ? 'text-sumi' : ''}`}
+                  onClick={() => {
+                    setConfirming(false)
+                    onRestart()
+                  }}
+                  className="rounded-sm bg-shu px-3 py-1.5 text-washi transition hover:opacity-85"
                 >
-                  {onlyWrong ? '显示全部' : '只看错题'}
+                  清掉答案重做
                 </button>
-              )}
+                <button onClick={() => setConfirming(false)} className="transition hover:text-sumi">
+                  算了
+                </button>
+              </>
+            ) : (
               <button
-                onClick={onResume}
+                onClick={() => setConfirming(true)}
+                title="难度标记会留着"
                 className="rounded-sm border border-sumi px-3 py-1.5 text-sumi transition hover:bg-sumi hover:text-washi"
               >
-                {resumeLabel}
+                重做
               </button>
-            </>
-          ) : confirming ? (
-            <>
-              <span className="text-shu">还有 {total - answeredCount} 题没答</span>
-              <button
-                onClick={onSubmit}
-                disabled={submitting}
-                className="rounded-sm bg-shu px-3 py-1.5 text-washi transition hover:opacity-85 disabled:opacity-50"
-              >
-                {submitting ? '交卷中…' : '照样交卷'}
-              </button>
-              <button onClick={onCancelSubmit} className="transition hover:text-sumi">
-                接着做
-              </button>
-            </>
-          ) : (
-            <>
-              <span className="tabular-nums">
-                已答 <span className="text-sumi">{answeredCount}</span> / {total}
-              </span>
-              <span className="font-mincho text-base tabular-nums text-sumi" title="用时">
-                {formatClock(elapsed)}
-              </span>
-              <button
-                onClick={onSubmit}
-                disabled={submitting || answeredCount === 0}
-                className="rounded-sm border border-sumi px-3 py-1.5 text-sumi transition hover:bg-sumi hover:text-washi disabled:cursor-not-allowed disabled:opacity-30"
-              >
-                {submitting ? '交卷中…' : '交卷'}
-              </button>
-            </>
-          )}
+            ))}
         </div>
       </div>
       {error && <p className="mt-2 text-xs text-shu">{error}</p>}

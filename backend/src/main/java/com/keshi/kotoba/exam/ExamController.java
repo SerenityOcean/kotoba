@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -21,7 +22,7 @@ import java.util.List;
 
 /**
  * 应试：导入的读解真题。卷子在前端解析、注好音再提交；判分在这边，
- * 按存下的答案算，交卷记录和分数一起存。
+ * 按存下的答案算，交卷记录和分数一起存。每道题还能自己标个难度。
  */
 @RestController
 @RequestMapping("/api/exams")
@@ -62,6 +63,20 @@ public class ExamController {
                                   @PathVariable Long id,
                                   @Valid @RequestBody AttemptRequest request) {
         return examService.submit(user.id(), id, request.answers(), request.elapsedSeconds());
+    }
+
+    @PutMapping("/{id}/marks/{number}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void mark(@AuthenticationPrincipal AppUserPrincipal user, @PathVariable Long id,
+                     @PathVariable int number, @Valid @RequestBody MarkRequest request) {
+        examService.mark(user.id(), id, number, request.level());
+    }
+
+    @DeleteMapping("/{id}/marks/{number}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void unmark(@AuthenticationPrincipal AppUserPrincipal user, @PathVariable Long id,
+                       @PathVariable int number) {
+        examService.unmark(user.id(), id, number);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
