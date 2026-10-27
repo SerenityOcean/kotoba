@@ -37,6 +37,36 @@ class OpenAiCompatibleEngineTest {
                 () -> ENGINE.readFirstValue("{\"sentences\":[{\"original\":\"空\"}}]}"));
     }
 
+    @Test
+    @DisplayName("数组收尾时漏关了里面的对象：补上 } 再读")
+    void closesObjectLeftOpenBeforeArrayEnds() {
+        // 线上碰到的：Unexpected close marker ']': expected '}'
+        String broken = "{\"sentences\":[{\"original\":\"空\",\"grammarPoints\":[{\"pattern\":\"〜ので\"]}]}";
+        assertThrows(Exception.class, () -> ENGINE.readFirstValue(broken));
+
+        String repaired = OpenAiCompatibleEngine.closeUnclosed(broken);
+
+        assertEquals("{\"sentences\":[{\"original\":\"空\",\"grammarPoints\":[{\"pattern\":\"〜ので\"}]}]}",
+                repaired);
+        assertEquals("〜ので", ENGINE.readFirstValue(repaired)
+                .get("sentences").get(0).get("grammarPoints").get(0).get("pattern").stringValue());
+    }
+
+    @Test
+    @DisplayName("字符串里的括号和转义引号不算数")
+    void ignoresBracketsInsideStrings() {
+        String broken = "{\"a\":[{\"b\":\"[注]は\\\"}\\\"\"]}";
+
+        assertEquals("{\"a\":[{\"b\":\"[注]は\\\"}\\\"\"}]}", OpenAiCompatibleEngine.closeUnclosed(broken));
+    }
+
+    @Test
+    @DisplayName("多出来的括号、本来就没毛病的，都不动")
+    void leavesOtherShapesAlone() {
+        assertNull(OpenAiCompatibleEngine.closeUnclosed("{\"sentences\":[{\"original\":\"空\"}}]}"));
+        assertNull(OpenAiCompatibleEngine.closeUnclosed("{\"sentences\":[]}"));
+    }
+
     private static JsonNode unwrap(String raw) {
         return new OpenAiCompatibleEngine(null, JSON, "test", "false",
                     OpenAiCompatibleEngine.ThinkingSwitch.QWEN)

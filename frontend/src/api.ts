@@ -69,6 +69,17 @@ export interface VerbUsage {
   usage: string
 }
 
+/** 名词、副词这些：动词形容词、外来语以外值得学的词 */
+export interface Word {
+  surface: string
+  reading: string
+  /** 名词 / サ变名词 / 副词 / 连体词 / 接续词 */
+  partOfSpeech: string
+  meaning: string
+  /** 搭配、美化语、和中文同形词的区别；没什么好说的是空串 */
+  note: string
+}
+
 export interface Loanword {
   surface: string
   english: string
@@ -88,6 +99,8 @@ export interface AnalyzedSentence {
   original: string
   translation: string
   verbs: VerbUsage[]
+  /** 新字段：改版前的结果里没有，读的时候按可能缺省处理 */
+  words?: Word[]
   /** 新字段：改版前的结果里没有，读的时候按可能缺省处理 */
   loanwords?: Loanword[]
   grammarPoints: GrammarPoint[]

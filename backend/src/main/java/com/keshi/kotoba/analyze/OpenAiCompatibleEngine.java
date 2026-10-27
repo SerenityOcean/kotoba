@@ -1,6 +1,8 @@
 package com.keshi.kotoba.analyze;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -11,6 +13,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,6 +28,8 @@ import java.util.Map;
  * 来，和 Anthropic 那条路共用同一份 record 推导。
  */
 class OpenAiCompatibleEngine implements AnalysisEngine {
+
+    private static final Logger log = LoggerFactory.getLogger(OpenAiCompatibleEngine.class);
 
     private static final String TOOL_NAME = "submit_analysis";
 
@@ -205,15 +211,73 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
                 .readValue(arguments);
     }
 
+    /**
+     * 补上漏写的右括号，补不了返回 null。
+     *
+     * <p>模型偶尔在数组收尾时忘了先关里面最后那个对象：{@code [{"pattern":"…"]}，
+     * Jackson 报「Unexpected close marker ']': expected '}'」，整次拆解就白跑了。
+     * 这种「收尾符号对上的是更外面一层」的，意思是确定的 —— 把中间漏掉的补上。
+     * 多出来的括号、半截截断这些猜不准，不碰。
+     */
+    static String closeUnclosed(String text) {
+        StringBuilder out = new StringBuilder(text.length() + 8);
+        Deque<Character> open = new ArrayDeque<>();
+        boolean inString = false;
+        boolean escaped = false;
+        boolean changed = false;
+        for (char c : text.toCharArray()) {
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                } else if (c == '\\') {
+                    escaped = true;
+                } else if (c == '"') {
+                    inString = false;
+                }
+            } else if (c == '"') {
+                inString = true;
+            } else if (c == '{' || c == '[') {
+                open.push(c);
+            } else if (c == '}' || c == ']') {
+                char opener = c == '}' ? '{' : '[';
+                if (!open.contains(opener)) {
+                    return null;
+                }
+                while (open.peek() != opener) {
+                    out.append(open.pop() == '{' ? '}' : ']');
+                    changed = true;
+                }
+                open.pop();
+            }
+            out.append(c);
+        }
+        return changed ? out.toString() : null;
+    }
+
     private Analysis parse(String arguments) {
         try {
-            return json.treeToValue(unwrapDoubleEncoded(readFirstValue(arguments)), Analysis.class);
+            return read(arguments);
         } catch (JacksonException e) {
+            String repaired = closeUnclosed(arguments);
+            if (repaired != null) {
+                try {
+                    Analysis analysis = read(repaired);
+                    // 留个记录：看得出模型多常这样，换模型时有个参照
+                    log.warn("{} 返回的 JSON 漏了右括号，补上后读出来了（{} 字符）", model, arguments.length());
+                    return analysis;
+                } catch (JacksonException ignored) {
+                    // 补了括号还是不行：报原来的错，那才是模型真正写坏的地方
+                }
+            }
             // 带上原因和长度：截断和格式不对是两回事，光说「看不懂」没法排查
             throw new AnalysisFailedException(
                     "模型返回的结果解析不了（" + arguments.length() + " 字符）："
                             + e.getOriginalMessage(), e);
         }
+    }
+
+    private Analysis read(String arguments) {
+        return json.treeToValue(unwrapDoubleEncoded(readFirstValue(arguments)), Analysis.class);
     }
 
     @Override

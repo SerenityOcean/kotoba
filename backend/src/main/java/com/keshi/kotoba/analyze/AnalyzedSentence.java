@@ -15,6 +15,10 @@ public record AnalyzedSentence(
         @JsonPropertyDescription("句中出现的动词和形容词，包括没活用的原形，每个一项。没有就给空数组")
         List<VerbUsage> verbs,
 
+        @JsonPropertyDescription("句中其余值得学的词：名词、サ变名词、副词、连体词、接续词，每个一项。"
+                + "动词形容词归 verbs，片假名外来语归 loanwords，不要重复列。没有就给空数组")
+        List<Word> words,
+
         @JsonPropertyDescription("句中出现的外来语（片假名词），每个一项。人名、地名不算。没有就给空数组")
         List<Loanword> loanwords,
 

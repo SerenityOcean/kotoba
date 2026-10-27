@@ -75,6 +75,40 @@ export default function AnalysisResults({ analysis }: { analysis: Analysis }) {
                   </>
                 )}
 
+                {s.words && s.words.length > 0 && (
+                  <>
+                    <Heading>名词・副词</Heading>
+                    {s.words.map((w, j) => (
+                      <Row
+                        key={j}
+                        checked={selected.has(`${i}-${k}n${j}`)}
+                        onToggle={() => toggle(`${i}-${k}n${j}`)}
+                      >
+                        <p className="flex flex-wrap items-baseline gap-x-2 leading-loose">
+                          <span className="font-mincho text-lg">
+                            <Furigana text={w.surface} />
+                          </span>
+                          {/* 汉字词的读音已经注在上面了，只有假名词才需要单独写 */}
+                          {!w.surface.includes('[') && w.reading !== w.surface && (
+                            <span className="text-xs text-hai">{w.reading}</span>
+                          )}
+                          {w.partOfSpeech && (
+                            <span className="rounded-sm border border-usu px-1.5 py-0.5 text-xs text-hai">
+                              {w.partOfSpeech}
+                            </span>
+                          )}
+                          <span className="text-xs text-hai">{w.meaning}</span>
+                        </p>
+                        {w.note && (
+                          <p className="mt-1.5 border-l-2 border-usu pl-3 text-sm leading-loose text-hai">
+                            <Furigana text={w.note} />
+                          </p>
+                        )}
+                      </Row>
+                    ))}
+                  </>
+                )}
+
                 {s.loanwords && s.loanwords.length > 0 && (
                   <>
                     <Heading>外来语</Heading>
@@ -107,7 +141,10 @@ export default function AnalysisResults({ analysis }: { analysis: Analysis }) {
                         onToggle={() => toggle(`${i}-${k}g${j}`)}
                       >
                         <p className="flex flex-wrap items-baseline gap-x-2">
-                          <span className="font-mincho text-lg">{g.pattern}</span>
+                          {/* 提示词让 pattern 不注音，模型偶尔还是注了，套一层免得露出方括号 */}
+                          <span className="font-mincho text-lg">
+                            <Furigana text={g.pattern} />
+                          </span>
                           <span className="text-xs text-hai">{g.meaning}</span>
                         </p>
                         <p className="mt-1.5 text-sm leading-relaxed">{g.explanation}</p>
