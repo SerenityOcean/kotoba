@@ -7,6 +7,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import com.keshi.kotoba.analyze.AnalyzeQuota;
+import com.keshi.kotoba.analyze.StubEngine;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
 import java.util.HexFormat;
@@ -17,6 +20,7 @@ import java.util.concurrent.ThreadLocalRandom;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** 卷面整份进出 JSON、交卷记录跟着卷子删，这些要连真库（先 docker compose up）。 */
 @SpringBootTest
@@ -27,6 +31,15 @@ class ExamServiceIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbc;
+
+    @Autowired
+    private ExamExplanationRepository explanationRepository;
+
+    @Autowired
+    private AnalyzeQuota quota;
+
+    @Autowired
+    private ObjectMapper json;
 
     private final List<Long> createdUsers = new ArrayList<>();
     private long userId;
@@ -102,10 +115,37 @@ class ExamServiceIntegrationTest {
         examService.unmark(userId, id, 57);
         assertEquals(Map.of(55, 2), examService.find(userId, id).marks());
 
+        examService.mark(userId, id, 57, 2);
+        assertEquals(Map.of(2, 2), examService.list(userId).getFirst().markCounts());
+
         assertThrows(InvalidExamException.class, () -> examService.mark(userId, id, 99, 1));
         long other = createUser();
         assertThrows(ExamNotFoundException.class, () -> examService.mark(other, id, 55, 1));
         assertThrows(ExamNotFoundException.class, () -> examService.unmark(other, id, 55));
+    }
+
+    @Test
+    @DisplayName("解析第一次调模型、存下；第二次直接读存的，卷子里也带着")
+    void explainsOnceAndCaches() {
+        long id = examService.create(userId, "卷子", content()).id();
+        QuestionExplanation written = new QuestionExplanation("考点", "因为", List.of(
+                new QuestionExplanation.Choice(2, "二", "不对"),
+                new QuestionExplanation.Choice(1, "一", "不对")));
+        StubEngine engine = new StubEngine(written);
+        ExplanationService service = new ExplanationService(examService, explanationRepository,
+                StubEngine.provide(engine), quota, json);
+
+        QuestionExplanation first = service.explain(userId, id, 55);
+        assertEquals(List.of(1, 2), first.choices().stream().map(QuestionExplanation.Choice::number).toList());
+        assertTrue(engine.lastText.contains("正确答案：3"));
+
+        engine.lastText = null;
+        assertEquals(first, service.explain(userId, id, 55));
+        assertNull(engine.lastText, "存过的不该再调模型");
+        assertEquals(Map.of(55, first), examService.find(userId, id).explanations());
+
+        assertThrows(InvalidExamException.class, () -> service.explain(userId, id, 99));
+        assertThrows(ExamNotFoundException.class, () -> service.explain(createUser(), id, 55));
     }
 
     @Test

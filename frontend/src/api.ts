@@ -621,8 +621,10 @@ export interface ExamSummary {
   gradedCount: number
   createdAt: string
   attemptCount: number
-  /** 最近一次交卷，没做过是 null */
+  /** 最近一次做完记下的成绩，没做完过是 null */
   lastAttempt: ExamAttempt | null
+  /** 每档难度标了几题：1 简单、2 一般、3 难 → 题数，没标的档不在里面 */
+  markCounts: Record<string, number>
 }
 
 export interface Exam {
@@ -636,9 +638,26 @@ export interface Exam {
   attempts: ExamAttempt[]
   /** 自己标的难度：题号 → 1 简单、2 一般、3 难。没标的题不在里面 */
   marks: Record<string, MarkLevel>
+  /** 已经生成过的解析：题号 → 解析 */
+  explanations: Record<string, QuestionExplanation>
 }
 
 export type MarkLevel = 1 | 2 | 3
+
+/** 一道题的解析：考点、为什么选正解、每个选项的意思和对错 */
+export interface QuestionExplanation {
+  point: string
+  reason: string
+  choices: { number: number; meaning: string; verdict: string }[]
+}
+
+/** 要一道题的解析。生成过的直接回来；没有的现调模型，要十几秒。 */
+export async function explainQuestion(id: number, number: number): Promise<QuestionExplanation> {
+  const res = await apiFetch(`/api/exams/${id}/questions/${number}/explanation`, {
+    method: 'POST',
+  })
+  return handle<QuestionExplanation>(res)
+}
 
 export async function fetchExams(): Promise<ExamSummary[]> {
   return handle<ExamSummary[]>(await apiFetch('/api/exams'))

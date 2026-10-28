@@ -10,8 +10,11 @@ import com.github.victools.jsonschema.generator.SchemaVersion;
 import com.github.victools.jsonschema.module.jackson.JacksonModule;
 import com.github.victools.jsonschema.module.jackson.JacksonOption;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
- * 从 {@link Analysis} 那几个 record 推出 JSON schema。
+ * 从结果的 record（拆解是 {@link Analysis}）推出 JSON schema。
  *
  * <p>Anthropic SDK 自己会做这件事，OpenAI 兼容接口要我们把 schema 显式传过去。
  * 两边共用这一份推导，省得手写第二份跟 record 走散 —— record 上的
@@ -19,16 +22,21 @@ import com.github.victools.jsonschema.module.jackson.JacksonOption;
  */
 final class AnalysisSchema {
 
-    private static final ObjectNode SCHEMA = generate();
+    /** 推一次就够了：record 在运行时不会变 */
+    private static final Map<Class<?>, String> SCHEMAS = new ConcurrentHashMap<>();
 
     private AnalysisSchema() {
     }
 
     static String asJson() {
-        return SCHEMA.toString();
+        return asJson(Analysis.class);
     }
 
-    private static ObjectNode generate() {
+    static String asJson(Class<?> type) {
+        return SCHEMAS.computeIfAbsent(type, t -> generate(t).toString());
+    }
+
+    private static ObjectNode generate(Class<?> type) {
         JacksonModule jackson = new JacksonModule(
                 JacksonOption.RESPECT_JSONPROPERTY_ORDER,
                 JacksonOption.INCLUDE_ONLY_JSONPROPERTY_ANNOTATED_METHODS);
@@ -37,7 +45,7 @@ final class AnalysisSchema {
                 SchemaVersion.DRAFT_2020_12, OptionPreset.PLAIN_JSON)
                 .with(jackson);
 
-        ObjectNode schema = new SchemaGenerator(builder.build()).generateSchema(Analysis.class);
+        ObjectNode schema = new SchemaGenerator(builder.build()).generateSchema(type);
         requireEverything(schema);
         return schema;
     }

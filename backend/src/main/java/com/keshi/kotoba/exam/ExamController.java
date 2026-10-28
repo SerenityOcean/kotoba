@@ -1,9 +1,14 @@
 package com.keshi.kotoba.exam;
 
+import com.keshi.kotoba.analyze.AnalysisFailedException;
+import com.keshi.kotoba.analyze.AnalysisUnavailableException;
+import com.keshi.kotoba.analyze.AnalyzeLimitException;
 import com.keshi.kotoba.auth.AppUserPrincipal;
 import com.keshi.kotoba.web.ApiError;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -22,16 +27,18 @@ import java.util.List;
 
 /**
  * 应试：导入的读解真题。卷子在前端解析、注好音再提交；判分在这边，
- * 按存下的答案算，交卷记录和分数一起存。每道题还能自己标个难度。
+ * 按存下的答案算，成绩记录和分数一起存。每道题还能自己标个难度、让模型写解析。
  */
 @RestController
 @RequestMapping("/api/exams")
 public class ExamController {
 
     private final ExamService examService;
+    private final ExplanationService explanationService;
 
-    public ExamController(ExamService examService) {
+    public ExamController(ExamService examService, ExplanationService explanationService) {
         this.examService = examService;
+        this.explanationService = explanationService;
     }
 
     @GetMapping
@@ -77,6 +84,32 @@ public class ExamController {
     public void unmark(@AuthenticationPrincipal AppUserPrincipal user, @PathVariable Long id,
                        @PathVariable int number) {
         examService.unmark(user.id(), id, number);
+    }
+
+    /** 一道题的解析：生成过的直接给，没有的现调模型，要十几秒。 */
+    @PostMapping("/{id}/questions/{number}/explanation")
+    public QuestionExplanation explain(@AuthenticationPrincipal AppUserPrincipal user,
+                                       @PathVariable Long id, @PathVariable int number) {
+        return explanationService.explain(user.id(), id, number);
+    }
+
+    @ExceptionHandler(AnalyzeLimitException.class)
+    ResponseEntity<ApiError> onLimit(AnalyzeLimitException e) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(Math.max(1, e.getRetryAfter().toSeconds())))
+                .body(new ApiError(e.getMessage()));
+    }
+
+    @ExceptionHandler(AnalysisUnavailableException.class)
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    ApiError onUnavailable(AnalysisUnavailableException e) {
+        return new ApiError(e.getMessage());
+    }
+
+    @ExceptionHandler(AnalysisFailedException.class)
+    @ResponseStatus(HttpStatus.BAD_GATEWAY)
+    ApiError onFailed(AnalysisFailedException e) {
+        return new ApiError(e.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

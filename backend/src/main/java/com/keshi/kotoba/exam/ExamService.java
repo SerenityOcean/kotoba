@@ -6,6 +6,7 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -25,13 +26,16 @@ public class ExamService {
     private final ExamRepository examRepository;
     private final ExamAttemptRepository attemptRepository;
     private final ExamMarkRepository markRepository;
+    private final ExamExplanationRepository explanationRepository;
     private final ObjectMapper json;
 
     public ExamService(ExamRepository examRepository, ExamAttemptRepository attemptRepository,
-                       ExamMarkRepository markRepository, ObjectMapper json) {
+                       ExamMarkRepository markRepository,
+                       ExamExplanationRepository explanationRepository, ObjectMapper json) {
         this.examRepository = examRepository;
         this.attemptRepository = attemptRepository;
         this.markRepository = markRepository;
+        this.explanationRepository = explanationRepository;
         this.json = json;
     }
 
@@ -60,18 +64,24 @@ public class ExamService {
         return new Graded(kept, correct, graded);
     }
 
-    /** 每份卷子带上做过几次、最近一次的成绩。 */
+    /** 每份卷子带上做过几次、最近一次的成绩、每档难度标了几题。 */
     @Transactional(readOnly = true)
     public List<ExamSummary> list(Long userId) {
         Map<Long, List<ExamAttempt>> attempts = attemptRepository
                 .findByOwnerIdOrderBySubmittedAtDesc(userId).stream()
                 .collect(Collectors.groupingBy(ExamAttempt::getExamId));
+        Map<Long, Map<Integer, Integer>> marks = new HashMap<>();
+        for (ExamMarkRepository.MarkCount count : markRepository.countByOwner(userId)) {
+            marks.computeIfAbsent(count.getExamId(), id -> new TreeMap<>())
+                    .put(count.getLevel().intValue(), count.getCount().intValue());
+        }
         return examRepository.findByOwnerIdOrderByCreatedAtDesc(userId).stream()
                 .map(exam -> {
                     List<ExamAttempt> mine = attempts.getOrDefault(exam.id(), List.of());
                     return new ExamSummary(exam.id(), exam.title(), exam.questionCount(),
                             exam.gradedCount(), exam.createdAt(), mine.size(),
-                            mine.isEmpty() ? null : attemptResponse(mine.getFirst()));
+                            mine.isEmpty() ? null : attemptResponse(mine.getFirst()),
+                            marks.getOrDefault(exam.id(), Map.of()));
                 })
                 .toList();
     }
@@ -83,10 +93,15 @@ public class ExamService {
         for (ExamMark mark : markRepository.findByExamId(id)) {
             marks.put(mark.getQuestionNumber(), mark.getLevel());
         }
+        Map<Integer, QuestionExplanation> explanations = new TreeMap<>();
+        for (ExamExplanation saved : explanationRepository.findByExamId(id)) {
+            explanations.put(saved.getQuestionNumber(),
+                    json.readValue(saved.getContent(), QuestionExplanation.class));
+        }
         return response(exam, attemptRepository
                 .findByExamIdAndOwnerIdOrderBySubmittedAtDesc(id, userId).stream()
                 .map(this::attemptResponse)
-                .toList(), marks);
+                .toList(), marks, explanations);
     }
 
     @Transactional
@@ -109,7 +124,7 @@ public class ExamService {
         int graded = (int) questions.stream().filter(q -> q.answer() != null).count();
         return response(examRepository.save(
                 new Exam(userId, title, body, questions.size(), graded, Instant.now())),
-                List.of(), Map.of());
+                List.of(), Map.of(), Map.of());
     }
 
     @Transactional
@@ -150,6 +165,12 @@ public class ExamService {
         markRepository.deleteByExamIdAndQuestionNumber(examId, number);
     }
 
+    /** 这个人的一份卷子的卷面；不是他的就当没有。 */
+    @Transactional(readOnly = true)
+    ExamContent content(Long userId, Long id) {
+        return content(load(userId, id));
+    }
+
     private Exam load(Long userId, Long id) {
         return examRepository.findByIdAndOwnerId(id, userId)
                 .orElseThrow(() -> new ExamNotFoundException(id));
@@ -160,9 +181,11 @@ public class ExamService {
     }
 
     private ExamResponse response(Exam exam, List<AttemptResponse> attempts,
-                                  Map<Integer, Integer> marks) {
+                                  Map<Integer, Integer> marks,
+                                  Map<Integer, QuestionExplanation> explanations) {
         return new ExamResponse(exam.getId(), exam.getTitle(), content(exam),
-                exam.getQuestionCount(), exam.getGradedCount(), exam.getCreatedAt(), attempts, marks);
+                exam.getQuestionCount(), exam.getGradedCount(), exam.getCreatedAt(), attempts, marks,
+                explanations);
     }
 
     private AttemptResponse attemptResponse(ExamAttempt attempt) {

@@ -25,7 +25,8 @@ import java.util.Map;
  *
  * <p>结构化输出用 tool calling 而不是 response_format：后者各家支持程度不一，
  * 而带 schema 的函数调用是这几家文档里都写明的。schema 从 {@link AnalysisSchema}
- * 来，和 Anthropic 那条路共用同一份 record 推导。
+ * 来，和 Anthropic 那条路共用同一份 record 推导。拆解和应试的解析都走这里，
+ * 区别只在结果的 record。
  */
 class OpenAiCompatibleEngine implements AnalysisEngine {
 
@@ -99,7 +100,7 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
     }
 
     @Override
-    public Analysis analyze(String systemPrompt, String text) {
+    public <T> T generate(String systemPrompt, String text, Class<T> type) {
         Map<String, Object> body = baseBody();
         body.put("messages", List.of(
                 Map.of("role", "system", "content", systemPrompt + TOOL_INSTRUCTION),
@@ -108,15 +109,15 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
                 "type", "function",
                 "function", Map.of(
                         "name", TOOL_NAME,
-                        "description", "提交这段日语的拆解结果",
-                        "parameters", schemaNode()))));
+                        "description", "提交结果",
+                        "parameters", schemaNode(type)))));
         // 思考关掉了就强制走这个函数，结构最稳；开着只能用 auto，
         // 靠提示词点名 + 从正文里捞 JSON 兜底
         body.put("tool_choice", thinkingOff()
                 ? Map.of("type", "function", "function", Map.of("name", TOOL_NAME))
                 : "auto");
 
-        return parse(extractArguments(post(body)));
+        return parse(extractArguments(post(body)), type);
     }
 
     private ChatResponse post(Map<String, Object> body) {
@@ -138,8 +139,8 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
         }
     }
 
-    private JsonNode schemaNode() {
-        return json.readTree(AnalysisSchema.asJson());
+    private JsonNode schemaNode(Class<?> type) {
+        return json.readTree(AnalysisSchema.asJson(type));
     }
 
     /**
@@ -254,17 +255,17 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
         return changed ? out.toString() : null;
     }
 
-    private Analysis parse(String arguments) {
+    private <T> T parse(String arguments, Class<T> type) {
         try {
-            return read(arguments);
+            return read(arguments, type);
         } catch (JacksonException e) {
             String repaired = closeUnclosed(arguments);
             if (repaired != null) {
                 try {
-                    Analysis analysis = read(repaired);
+                    T result = read(repaired, type);
                     // 留个记录：看得出模型多常这样，换模型时有个参照
                     log.warn("{} 返回的 JSON 漏了右括号，补上后读出来了（{} 字符）", model, arguments.length());
-                    return analysis;
+                    return result;
                 } catch (JacksonException ignored) {
                     // 补了括号还是不行：报原来的错，那才是模型真正写坏的地方
                 }
@@ -276,8 +277,8 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
         }
     }
 
-    private Analysis read(String arguments) {
-        return json.treeToValue(unwrapDoubleEncoded(readFirstValue(arguments)), Analysis.class);
+    private <T> T read(String arguments, Class<T> type) {
+        return json.treeToValue(unwrapDoubleEncoded(readFirstValue(arguments)), type);
     }
 
     @Override
