@@ -56,8 +56,8 @@ export default function ExamPage() {
 }
 
 /**
- * 逐题练：选项点下去马上对答案，这题就定下了。做过的题下面可以标难度
- * （简单 / 一般 / 难），一点就存到后端，重做也还在。全做完自动记一次成绩。
+ * 逐题练：选项点下去马上对答案，再点一下选中的那项是撤回。每道题下面都能标难度
+ * （简单 / 一般 / 难，一点就存到后端，重做也还在）、看解析。全做完自动记一次成绩。
  *
  * 卷面还是按原卷的顺序排：大题 → 本文 → 小题。底下钉着一条题号，
  * 对错和难度一眼看得到，可以只看错题或某一档难度的题。
@@ -156,9 +156,15 @@ function ExamPaper({ examId }: { examId: number }) {
     }
   }
 
-  // 选下去就定了：马上对答案，不能再改
+  // 选下去马上对答案。再点一下选中的那项是撤回，这题回到没做的样子；
+  // 其余选项在撤回前点不动 —— 不然看着正解改答案，对错就没意义了
   function choose(number: number, choice: number) {
-    if (answers[number] !== undefined) return
+    const current = answers[number]
+    if (current === choice) {
+      setAnswers(({ [number]: _, ...rest }) => rest)
+      return
+    }
+    if (current !== undefined) return
     const next = { ...answers, [number]: choice }
     setAnswers(next)
     if (questions.every((q) => next[q.number] !== undefined)) void record(next)
@@ -448,7 +454,7 @@ function PassageView({
       {passage.label && <p className="mb-4 text-xs tracking-widest text-hai">{passage.label}</p>}
 
       {/* 行高给振假名留空隙；正文限宽，一行的字数不至于读着累 */}
-      <div className="max-w-[40rem] font-mincho text-lg leading-[2.3]">
+      <div lang="ja" className="max-w-[40rem] font-mincho text-lg leading-[2.3]">
         {groups.map((group, i) =>
           Array.isArray(group) ? (
             <div
@@ -568,13 +574,16 @@ function QuestionView({
           問{question.number}
         </span>
         {/* 对话题的题干是好几行 A「…」B「…」 */}
-        <span className="min-w-0 whitespace-pre-line">
+        <span lang="ja" className="min-w-0 whitespace-pre-line">
           <ExamText text={question.stem} />
         </span>
       </p>
 
       {question.extra.length > 0 && (
-        <div className="mt-3 border-l-2 border-usu pl-4 font-mincho text-base leading-[2.1]">
+        <div
+          lang="ja"
+          className="mt-3 border-l-2 border-usu pl-4 font-mincho text-base leading-[2.1]"
+        >
           {question.extra.map((line, i) => (
             <p key={i} className={line.startsWith('・') ? 'pl-[1em] -indent-[1em]' : ''}>
               <ExamText text={line} />
@@ -600,38 +609,33 @@ function QuestionView({
 
       {result === 'ungraded' && <p className="mt-2 pl-3 text-xs text-hai">这题讲义里没给答案</p>}
 
-      {/* 做过的、或者以前标过的题才显示：没做的题还谈不上难不难。
-          解析会亮出答案，做过才给 */}
-      {(revealed || level !== undefined) && (
-        <div data-skip className="mt-3 flex flex-wrap items-center gap-2 pl-3 text-xs text-hai">
-          <span className="mr-1">难度</span>
-          {LEVELS.map(({ level: value, label, on }) => (
-            <button
-              key={value}
-              onClick={() => onMark(value)}
-              aria-pressed={level === value}
-              title={level === value ? '再点一下去掉' : `标成${label}，会保存`}
-              className={`rounded-sm border px-2.5 py-0.5 transition ${
-                level === value ? on : 'border-usu hover:border-hai hover:text-sumi'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-          {revealed && (
-            <button
-              onClick={onExplain}
-              disabled={explaining}
-              aria-expanded={explanation !== undefined}
-              className={`ml-3 transition hover:text-ai disabled:cursor-wait ${
-                explanation ? 'text-ai' : ''
-              }`}
-            >
-              {explaining ? '解析生成中…' : explanation ? '收起解析' : '解析'}
-            </button>
-          )}
-        </div>
-      )}
+      {/* 难度和解析每题都有，不用先做：想先看解析再做也行 */}
+      <div data-skip className="mt-3 flex flex-wrap items-center gap-2 pl-3 text-xs text-hai">
+        <span className="mr-1">难度</span>
+        {LEVELS.map(({ level: value, label, on }) => (
+          <button
+            key={value}
+            onClick={() => onMark(value)}
+            aria-pressed={level === value}
+            title={level === value ? '再点一下去掉' : `标成${label}，会保存`}
+            className={`rounded-sm border px-2.5 py-0.5 transition ${
+              level === value ? on : 'border-usu hover:border-hai hover:text-sumi'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+        <button
+          onClick={onExplain}
+          disabled={explaining}
+          aria-expanded={explanation !== undefined}
+          className={`ml-3 transition hover:text-ai disabled:cursor-wait ${
+            explanation ? 'text-ai' : ''
+          }`}
+        >
+          {explaining ? '解析生成中…' : explanation ? '收起解析' : '解析'}
+        </button>
+      </div>
 
       {explainError && <p className="mt-2 pl-3 text-xs text-shu">{explainError}</p>}
       {explanation && (
@@ -707,7 +711,7 @@ function Choice({
   text: string
   chosen: boolean
   answer: number | null
-  /** 这题做过了：亮出正解，不能再改 */
+  /** 这题做过了：亮出正解。选中的那项再点是撤回，其余的点不动 */
   revealed: boolean
   onChoose: () => void
 }) {
@@ -731,16 +735,19 @@ function Choice({
       onClick={(e) => {
         if (window.getSelection()?.isCollapsed === false) e.preventDefault()
       }}
+      title={chosen ? '再点一下撤回' : undefined}
       className={`group flex items-baseline gap-3 rounded-sm px-3 py-1.5 transition has-[:focus-visible]:ring-1 has-[:focus-visible]:ring-ai ${
-        revealed ? '' : 'cursor-pointer hover:bg-usu/40'
+        revealed && !chosen ? '' : 'cursor-pointer hover:bg-usu/40'
       }`}
     >
+      {/* 用 click 不用 change：点已经选中的单选框不触发 change，撤回就收不到 */}
       <input
         type="radio"
         name={name}
         checked={chosen}
-        disabled={revealed}
-        onChange={onChoose}
+        disabled={revealed && !chosen}
+        onClick={onChoose}
+        readOnly
         className="sr-only"
       />
       <span
@@ -749,10 +756,17 @@ function Choice({
       >
         {number}
       </span>
-      <span className={`min-w-0 font-mincho text-base leading-[2.1] sm:text-[1.0625rem] ${tone}`}>
+      <span
+        lang="ja"
+        className={`min-w-0 font-mincho text-base leading-[2.1] sm:text-[1.0625rem] ${tone}`}
+      >
         <ExamText text={text} />
         {isAnswer && <span className="ml-2 font-ui text-xs">正解</span>}
-        {wrong && <span className="ml-2 font-ui text-xs">你选的</span>}
+        {wrong && (
+          <span lang="zh-CN" className="ml-2 font-ui text-xs">
+            你选的
+          </span>
+        )}
       </span>
     </label>
   )
