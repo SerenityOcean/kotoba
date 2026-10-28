@@ -119,6 +119,9 @@ CSP 只放行自己的资源（外加 sql.js 要的 `wasm-unsafe-eval`）。前�
       GITHUB_CLIENT_ID=...
       GITHUB_CLIENT_SECRET=...
 
+      # 展示页上「用演示账号看看」登进的共用号，只读。先用 demo/seed.py 把号建好；不配就不显示
+      DEMO_USERNAME=demo_n4
+
 - GitHub OAuth App 的 Authorization callback URL 填
   `https://kotoba.work/api/login/oauth2/code/github`，和 `APP_BASE_URL` 必须一致。
 - 限流按真实 IP 算，靠 nginx 传的 `X-Forwarded-For`（后端开了

@@ -1,6 +1,7 @@
 package com.keshi.kotoba.analyze;
 
 import com.keshi.kotoba.auth.AppUserPrincipal;
+import com.keshi.kotoba.auth.DemoAccount;
 import com.keshi.kotoba.web.ApiError;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -26,16 +27,18 @@ public class AnalyzeController {
 
     private final AnalyzeService analyzeService;
     private final AnalyzeQuota quota;
+    private final DemoAccount demo;
 
-    public AnalyzeController(AnalyzeService analyzeService, AnalyzeQuota quota) {
+    public AnalyzeController(AnalyzeService analyzeService, AnalyzeQuota quota, DemoAccount demo) {
         this.analyzeService = analyzeService;
         this.quota = quota;
+        this.demo = demo;
     }
 
     @PostMapping
     public Analysis analyze(@AuthenticationPrincipal AppUserPrincipal user,
                             @Valid @RequestBody AnalyzeRequest request) {
-        quota.acquire(user.id());
+        quota.acquire(user.id(), demo.is(user.username()));
         return analyzeService.analyze(request.text());
     }
 

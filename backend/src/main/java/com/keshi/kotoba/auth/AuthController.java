@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.Duration;
+
 /**
  * 不需要登录的那一半：登录、注册、找回密码、点邮件链接。
  * 登出不在这儿 —— 由 Spring Security 的 LogoutFilter 处理 POST /api/auth/logout
@@ -27,12 +29,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 public class AuthController {
 
+    /** 体验账号的会话只留一天：大家各点各的，普通登录那样留 30 天，spring_session 会越攒越多 */
+    static final Duration DEMO_SESSION = Duration.ofDays(1);
+
     private final AuthService authService;
     private final AccountService accountService;
     private final AuthenticationManager authenticationManager;
     private final SessionManager sessionManager;
     private final LoginThrottle throttle;
     private final AuthMailer mailer;
+    private final DemoAccount demo;
+    private final AppUserRepository users;
     private final boolean githubEnabled;
 
     public AuthController(AuthService authService,
@@ -41,6 +48,8 @@ public class AuthController {
                           SessionManager sessionManager,
                           LoginThrottle throttle,
                           AuthMailer mailer,
+                          DemoAccount demo,
+                          AppUserRepository users,
                           ObjectProvider<ClientRegistrationRepository> github) {
         this.authService = authService;
         this.accountService = accountService;
@@ -48,12 +57,14 @@ public class AuthController {
         this.sessionManager = sessionManager;
         this.throttle = throttle;
         this.mailer = mailer;
+        this.demo = demo;
+        this.users = users;
         this.githubEnabled = github.getIfAvailable() != null;
     }
 
     @GetMapping("/features")
     public FeaturesResponse features() {
-        return new FeaturesResponse(mailer.isEnabled(), githubEnabled);
+        return new FeaturesResponse(mailer.isEnabled(), githubEnabled, demo.enabled());
     }
 
     @PostMapping("/register")
@@ -74,10 +85,28 @@ public class AuthController {
         return login(request.username(), request.password(), httpRequest, httpResponse);
     }
 
+    /**
+     * 展示页上的「用演示账号进去」：不要密码，登进共用的体验账号。这个号只读，见 {@link DemoGuardFilter}。
+     * 每个点进来的人各有各的会话，互不影响；谁登出都不会把别人踢下去。
+     */
+    @PostMapping("/demo")
+    public UserResponse demo(HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
+        if (!demo.enabled()) {
+            throw new DemoUnavailableException("这台服务器没开体验账号");
+        }
+        throttle.checkLogin(httpRequest.getRemoteAddr(), demo.username());
+        AppUser user = users.findByUsername(demo.username())
+                .orElseThrow(() -> new DemoUnavailableException("体验账号还没建好"));
+
+        sessionManager.signIn(user.getId(), user.getUsername(), httpRequest, httpResponse);
+        httpRequest.getSession().setMaxInactiveInterval((int) DEMO_SESSION.toSeconds());
+        return new UserResponse(user.getId(), user.getUsername(), true);
+    }
+
     /** 前端启动时先问一句"我是谁"：没登录的话过不了 filter，直接 401。 */
     @GetMapping("/me")
     public UserResponse me(@AuthenticationPrincipal AppUserPrincipal principal) {
-        return UserResponse.from(principal);
+        return UserResponse.from(principal, demo.is(principal.username()));
     }
 
     /** 无论邮箱存不存在都回 202，见 {@link AccountService#requestPasswordReset}。 */
@@ -126,6 +155,6 @@ public class AuthController {
 
         AppUserPrincipal principal = (AppUserPrincipal) authentication.getPrincipal();
         sessionManager.signIn(principal.id(), principal.username(), httpRequest, httpResponse);
-        return UserResponse.from(principal);
+        return UserResponse.from(principal, demo.is(principal.username()));
     }
 }

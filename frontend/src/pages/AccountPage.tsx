@@ -25,7 +25,7 @@ const GITHUB_RESULT: Record<string, { text: string; ok: boolean }> = {
 export default function AccountPage() {
   const [params] = useSearchParams()
   const [account, setAccount] = useState<Account | null>(null)
-  const [features, setFeatures] = useState<AuthFeatures>({ email: false, github: false })
+  const [features, setFeatures] = useState<AuthFeatures>({ email: false, github: false, demo: false })
   const [error, setError] = useState<string | null>(null)
 
   async function load() {

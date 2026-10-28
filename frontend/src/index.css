@@ -60,6 +60,33 @@ ruby > rt {
   animation: quote-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* 展示页：拆解条目一条条浮上来、今天那一格亮起来、自动演示时的小灯 */
+@keyframes landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes landing-pop {
+  from {
+    transform: scale(0.4);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes landing-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-quote {
     animation: none;

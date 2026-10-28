@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react'
-import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import HomePage from './pages/HomePage'
 import ReviewPage from './pages/ReviewPage'
 import CardsPage from './pages/CardsPage'
@@ -15,6 +15,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import VerifyEmailPage from './pages/VerifyEmailPage'
 import AccountPage from './pages/AccountPage'
+import LandingPage from './pages/LandingPage'
 import ErrorBoundary from './components/ErrorBoundary'
 import { useAuth } from './auth-context'
 import { useGoal } from './goal-context'
@@ -65,8 +66,10 @@ function Kotoba() {
   // 登录页只有一块内容，没有导航在右边配重，靠左排会明显偏心 —— 单独收窄居中
   // 找回密码、邮件链接落地页同理；但已登录的人点开邮件链接时照常显示导航
   const centered = !user && SIGNED_OUT_PAGES.includes(location.pathname)
+  // 没登录时的首页是展示页：舞台和下面那排功能要宽一些
+  const landing = ready && !user && location.pathname === '/'
 
-  const width = centered ? 'max-w-sm' : wide ? 'max-w-6xl' : 'max-w-3xl'
+  const width = centered ? 'max-w-sm' : wide ? 'max-w-6xl' : landing ? 'max-w-5xl' : 'max-w-3xl'
 
   return (
     <div className="min-h-screen bg-washi font-ui text-sumi">
@@ -101,7 +104,21 @@ function Kotoba() {
               </nav>
             </div>
           )}
+
+          {landing && (
+            <nav className="flex items-baseline gap-5 text-sm">
+              <Link to="/login" className="text-hai transition hover:text-sumi">
+                登录
+              </Link>
+              <Link to="/login?mode=register" className="text-hai transition hover:text-sumi">
+                注册
+              </Link>
+              <ThemeButton theme={theme} onToggle={toggle} />
+            </nav>
+          )}
         </header>
+
+        {user?.demo && <DemoBanner />}
 
         {/* 某一页渲染出错时只换掉这一块，页头和导航还在，点去别页就恢复 */}
         <ErrorBoundary resetKey={location.pathname}>
@@ -119,18 +136,13 @@ function Kotoba() {
                 path="/account"
                 element={
                   <RequireAuth>
-                    <AccountPage />
+                    {/* 体验账号大家共用，账号设置一概不开放（后端也拦着） */}
+                    {user?.demo ? <DemoAccountNotice /> : <AccountPage />}
                   </RequireAuth>
                 }
               />
-              <Route
-                path="/"
-                element={
-                  <RequireAuth>
-                    <HomePage />
-                  </RequireAuth>
-                }
-              />
+              {/* 没登录的人看到的首页是展示页，不再直接跳去登录 */}
+              <Route path="/" element={user ? <HomePage /> : <LandingPage />} />
               <Route
                 path="/review"
                 element={
@@ -226,7 +238,8 @@ function LoginRoute() {
     const from = (location.state as { from?: string } | null)?.from ?? '/'
     return <Navigate to={from} replace />
   }
-  return <LoginPage />
+  // ?mode=register 变了就换一个新的登录页：已经停在 /login 时点「注册」也能切过去
+  return <LoginPage key={location.search} />
 }
 
 /** 没登录就送去登录页，并记住本来要去哪儿。 */
@@ -286,15 +299,7 @@ function UserMenu({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =>
       >
         {user?.username}
       </NavLink>
-      {/* 显示的是点了会切到的那一边 */}
-      <button
-        onClick={onToggleTheme}
-        title={theme === 'dark' ? '切到日间模式' : '切到夜间模式'}
-        aria-label={theme === 'dark' ? '切到日间模式' : '切到夜间模式'}
-        className="font-mincho text-xs text-hai transition hover:text-ai"
-      >
-        {theme === 'dark' ? '昼' : '夜'}
-      </button>
+      <ThemeButton theme={theme} onToggle={onToggleTheme} />
       <button
         onClick={() => logout()}
         className="text-xs text-hai transition hover:text-shu"
@@ -302,6 +307,58 @@ function UserMenu({ theme, onToggleTheme }: { theme: Theme; onToggleTheme: () =>
         登出
       </button>
     </span>
+  )
+}
+
+/** 昼夜切换。显示的是点了会切到的那一边 */
+function ThemeButton({ theme, onToggle }: { theme: Theme; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      title={theme === 'dark' ? '切到日间模式' : '切到夜间模式'}
+      aria-label={theme === 'dark' ? '切到日间模式' : '切到夜间模式'}
+      className="font-mincho text-xs text-hai transition hover:text-ai"
+    >
+      {theme === 'dark' ? '昼' : '夜'}
+    </button>
+  )
+}
+
+/**
+ * 体验账号登着的时候，页头下面一直挂着这一行。
+ *
+ * 「注册一个」要先登出：注册页只给没登录的人看。登出前先回首页 —— 停在要登录的页上登出的话，
+ * 那一页的 <Navigate to="/login"> 会在 effect 里晚一步跳，把后面去注册页的这一跳盖掉。
+ */
+function DemoBanner() {
+  const { logout } = useAuth()
+  const navigate = useNavigate()
+
+  return (
+    <p className="-mt-6 mb-12 border-l-2 border-ai pl-4 text-xs leading-relaxed text-hai sm:-mt-8 sm:mb-14">
+      这是大家共用的体验账号：随便看，改动不会存下来，复习的评分也不存。
+      <button
+        onClick={async () => {
+          navigate('/')
+          await logout()
+          navigate('/login?mode=register')
+        }}
+        className="ml-1 text-ai underline-offset-4 hover:underline"
+      >
+        注册一个自己的 →
+      </button>
+    </p>
+  )
+}
+
+function DemoAccountNotice() {
+  return (
+    <div className="py-20 text-center">
+      <p className="font-mincho text-2xl">体验账号没有账号设置</p>
+      <p className="mt-4 text-sm leading-relaxed text-hai">
+        大家共用这一个号，改密码、绑邮箱、管登录设备都不开放。
+      </p>
+    </div>
   )
 }
 

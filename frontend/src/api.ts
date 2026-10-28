@@ -723,12 +723,16 @@ export async function markQuestion(
 export interface User {
   id: number
   username: string
+  /** 大家共用的体验账号：只能看不能改，复习的评分也不往后端存 */
+  demo: boolean
 }
 
 /** 这台服务器上配好了哪些可选功能。没配的按钮前端就不显示。 */
 export interface AuthFeatures {
   email: boolean
   github: boolean
+  /** 开了体验账号，展示页上才显示「用演示账号看看」 */
+  demo: boolean
 }
 
 export interface Account {
@@ -782,6 +786,12 @@ export async function register(username: string, password: string): Promise<User
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password }),
   })
+  return handle<User>(res, true)
+}
+
+/** 不要密码，登进共用的体验账号。 */
+export async function enterDemo(): Promise<User> {
+  const res = await apiFetch('/api/auth/demo', { method: 'POST' })
   return handle<User>(res, true)
 }
 

@@ -9,7 +9,8 @@ type Mode = 'login' | 'register'
 
 export default function LoginPage() {
   const [params] = useSearchParams()
-  const [mode, setMode] = useState<Mode>('login')
+  // 展示页上的「注册一个」带着 ?mode=register 过来，直接打开注册
+  const [mode, setMode] = useState<Mode>(params.get('mode') === 'register' ? 'register' : 'login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -20,14 +21,14 @@ export default function LoginPage() {
   const [submitting, setSubmitting] = useState(false)
   const [features, setFeatures] = useState<AuthFeatures | null>(null)
 
-  const { login, register } = useAuth()
+  const { login, register, enterDemo } = useAuth()
   // 登录成功后不用自己跳：登录态一变，App 里的 LoginRoute 会把人送回原来那页
 
   useEffect(() => {
     // 拿不到就当都没开，登录本身不受影响
     fetchAuthFeatures()
       .then(setFeatures)
-      .catch(() => setFeatures({ email: false, github: false }))
+      .catch(() => setFeatures({ email: false, github: false, demo: false }))
   }, [])
 
   function switchMode(next: Mode) {
@@ -122,6 +123,21 @@ export default function LoginPage() {
         >
           用 GitHub {mode === 'login' ? '登录' : '注册'}
         </a>
+      )}
+
+      {features?.demo && (
+        <p className="mt-6 text-center text-sm text-hai">
+          先不注册？
+          <button
+            type="button"
+            onClick={() =>
+              enterDemo().catch((err) => setError(err instanceof Error ? err.message : '进不去体验账号'))
+            }
+            className="text-ai transition hover:underline"
+          >
+            用体验账号看看
+          </button>
+        </p>
       )}
 
       <div className="mt-8 flex items-baseline justify-between gap-4 text-xs leading-relaxed text-hai">
