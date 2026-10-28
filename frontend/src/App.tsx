@@ -15,6 +15,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage'
 import ResetPasswordPage from './pages/ResetPasswordPage'
 import VerifyEmailPage from './pages/VerifyEmailPage'
 import AccountPage from './pages/AccountPage'
+import ErrorBoundary from './components/ErrorBoundary'
 import { useAuth } from './auth-context'
 import { useGoal } from './goal-context'
 import { countdown } from './goal-time'
@@ -102,107 +103,110 @@ function Kotoba() {
           )}
         </header>
 
-        {/* 还没问出"我是谁"之前先别渲染路由，否则会闪一下登录页 */}
-        {!ready ? (
-          <p className="text-sm text-hai">加载中…</p>
-        ) : (
-          <Routes>
-            <Route path="/login" element={<LoginRoute />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            {/* 这两个是邮件链接的落地页，登没登录都能打开 */}
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/verify-email" element={<VerifyEmailPage />} />
-            <Route
-              path="/account"
-              element={
-                <RequireAuth>
-                  <AccountPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/"
-              element={
-                <RequireAuth>
-                  <HomePage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/review"
-              element={
-                <RequireAuth>
-                  <ReviewPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/reading"
-              element={
-                <RequireAuth>
-                  <ArticlesPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/reading/:id"
-              element={
-                <RequireAuth>
-                  <ArticlePage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/reading/:id/edit"
-              element={
-                <RequireAuth>
-                  <ArticleEditPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/exam"
-              element={
-                <RequireAuth>
-                  <ExamsPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/exam/:id"
-              element={
-                <RequireAuth>
-                  <ExamPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/analyze"
-              element={
-                <RequireAuth>
-                  <AnalyzePage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/cards"
-              element={
-                <RequireAuth>
-                  <CardsPage />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/higan"
-              element={
-                <RequireAuth>
-                  <HiganPage />
-                </RequireAuth>
-              }
-            />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        )}
+        {/* 某一页渲染出错时只换掉这一块，页头和导航还在，点去别页就恢复 */}
+        <ErrorBoundary resetKey={location.pathname}>
+          {/* 还没问出"我是谁"之前先别渲染路由，否则会闪一下登录页 */}
+          {!ready ? (
+            <p className="text-sm text-hai">加载中…</p>
+          ) : (
+            <Routes>
+              <Route path="/login" element={<LoginRoute />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              {/* 这两个是邮件链接的落地页，登没登录都能打开 */}
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route
+                path="/account"
+                element={
+                  <RequireAuth>
+                    <AccountPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/"
+                element={
+                  <RequireAuth>
+                    <HomePage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/review"
+                element={
+                  <RequireAuth>
+                    <ReviewPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/reading"
+                element={
+                  <RequireAuth>
+                    <ArticlesPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/reading/:id"
+                element={
+                  <RequireAuth>
+                    <ArticlePage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/reading/:id/edit"
+                element={
+                  <RequireAuth>
+                    <ArticleEditPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/exam"
+                element={
+                  <RequireAuth>
+                    <ExamsPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/exam/:id"
+                element={
+                  <RequireAuth>
+                    <ExamPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/analyze"
+                element={
+                  <RequireAuth>
+                    <AnalyzePage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/cards"
+                element={
+                  <RequireAuth>
+                    <CardsPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/higan"
+                element={
+                  <RequireAuth>
+                    <HiganPage />
+                  </RequireAuth>
+                }
+              />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          )}
+        </ErrorBoundary>
       </div>
     </div>
   )

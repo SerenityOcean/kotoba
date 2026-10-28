@@ -507,7 +507,7 @@ function CardRow({
     >
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline gap-2.5">
-          <span className="font-mincho text-xl transition group-hover:text-ai sm:text-2xl">
+          <span lang="ja" className="font-mincho text-xl transition group-hover:text-ai sm:text-2xl">
             {stripFurigana(card.front)}
           </span>
           {card.reading && (
@@ -551,7 +551,7 @@ function CardDetail({
   return (
     <div className="mb-4 border-l-2 border-usu pl-4">
       {card.front.includes('[') && (
-        <p className="mb-2 font-mincho text-lg leading-loose">
+        <p lang="ja" className="mb-2 font-mincho text-lg leading-loose">
           <Furigana text={card.front} />
         </p>
       )}

@@ -323,7 +323,7 @@ export default function ReviewPage() {
       </div>
 
       <div className="py-12 text-center sm:py-16">
-        <div className="font-mincho text-5xl leading-tight sm:text-6xl">
+        <div lang="ja" className="font-mincho text-5xl leading-tight sm:text-6xl">
           <Furigana text={front} />
         </div>
 

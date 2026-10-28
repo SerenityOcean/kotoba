@@ -28,7 +28,7 @@ export default function AnalysisResults({ analysis }: { analysis: Analysis }) {
             {slot.sentences.map((s, k) => (
               <div key={k}>
                 <Row checked={selected.has(`${i}-${k}`)} onToggle={() => toggle(`${i}-${k}`)}>
-                  <p className="font-mincho text-xl leading-loose sm:text-2xl">
+                  <p lang="ja" className="font-mincho text-xl leading-loose sm:text-2xl">
                     <Furigana text={s.original} />
                   </p>
                   <p className="mt-1.5 text-sm text-hai">{s.translation}</p>

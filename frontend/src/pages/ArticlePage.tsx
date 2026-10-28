@@ -64,7 +64,7 @@ export default function ArticlePage() {
         {notice && <p className="mt-3 text-sm text-shu">{notice}</p>}
 
         <article className="mt-5">
-          <h1 className="font-mincho text-3xl leading-[1.9] sm:text-4xl">
+          <h1 lang="ja" className="font-mincho text-3xl leading-[1.9] sm:text-4xl">
             <Furigana text={article.title} />
           </h1>
           <p className="mt-4 text-xs text-hai">
@@ -89,7 +89,7 @@ export default function ArticlePage() {
           </p>
 
           {/* 行高给振假名留空隙，否则假名会贴到上一行；正文限宽保证一行的字数不至于读着累 */}
-          <div className="mt-10 max-w-[38rem] font-mincho text-lg leading-[2.4] whitespace-pre-wrap sm:text-xl">
+          <div lang="ja" className="mt-10 max-w-[38rem] font-mincho text-lg leading-[2.4] whitespace-pre-wrap sm:text-xl">
             <Furigana text={article.body} />
           </div>
         </article>
