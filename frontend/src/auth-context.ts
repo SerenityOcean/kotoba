@@ -7,6 +7,8 @@ export interface AuthContextValue {
   ready: boolean
   login: (username: string, password: string) => Promise<void>
   register: (username: string, password: string) => Promise<void>
+  /** 登进共用的体验账号 */
+  enterDemo: () => Promise<void>
   logout: () => Promise<void>
 }
 

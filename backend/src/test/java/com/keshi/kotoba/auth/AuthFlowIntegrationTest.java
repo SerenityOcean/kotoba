@@ -104,6 +104,14 @@ class AuthFlowIntegrationTest {
     }
 
     @Test
+    @DisplayName("没配体验账号时，免密登录的接口是关着的")
+    void demoIsOffByDefault() throws Exception {
+        Browser browser = new Browser();
+        browser.send(get("/api/auth/features")).andExpect(jsonPath("$.demo").value(false));
+        browser.send(post("/api/auth/demo")).andExpect(status().isNotFound());
+    }
+
+    @Test
     @DisplayName("同一 IP 连错 5 次密码，第 6 次直接 429，连对的密码也不放")
     void locksOutAfterRepeatedFailures() throws Exception {
         register(new Browser());

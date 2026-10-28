@@ -14,6 +14,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
@@ -29,7 +30,8 @@ public class SecurityConfig {
     SecurityFilterChain filterChain(HttpSecurity http,
                                     SecurityContextRepository securityContextRepository,
                                     ObjectProvider<ClientRegistrationRepository> github,
-                                    GithubLoginSuccessHandler githubHandler) throws Exception {
+                                    GithubLoginSuccessHandler githubHandler,
+                                    DemoAccount demo) throws Exception {
         http
                 // 会话 cookie 是 SameSite=Lax（见 application.properties）：GitHub 授权回跳是
                 // 从 github.com 过来的跨站导航，Strict 的话 cookie 带不回来，OAuth 的 state 就对不上。
@@ -37,11 +39,14 @@ public class SecurityConfig {
                 // spa() = 令牌放在 JS 可读的 XSRF-TOKEN cookie 里，前端写请求时抄进 X-XSRF-TOKEN 头。
                 .csrf(csrf -> csrf.spa())
                 .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
+                // 认出是谁之后再拦：体验账号只读
+                .addFilterAfter(new DemoGuardFilter(demo), AuthorizationFilter.class)
                 .securityContext(context -> context.securityContextRepository(securityContextRepository))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST,
                                 "/api/auth/login",
                                 "/api/auth/register",
+                                "/api/auth/demo",
                                 "/api/auth/password-reset/**",
                                 "/api/auth/email/verify").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/features").permitAll()

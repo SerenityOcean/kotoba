@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   UNAUTHORIZED_EVENT,
+  enterDemo as enterDemoApi,
   fetchMe,
   login as loginApi,
   logout as logoutApi,
@@ -40,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ready,
       login: async (username, password) => setUser(await loginApi(username, password)),
       register: async (username, password) => setUser(await registerApi(username, password)),
+      enterDemo: async () => setUser(await enterDemoApi()),
       logout: async () => {
         try {
           await logoutApi()

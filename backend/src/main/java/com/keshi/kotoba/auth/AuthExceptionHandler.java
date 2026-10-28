@@ -42,6 +42,12 @@ class AuthExceptionHandler {
         return new ApiError(e.getMessage());
     }
 
+    @ExceptionHandler(DemoUnavailableException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    ApiError onDemoUnavailable(DemoUnavailableException e) {
+        return new ApiError(e.getMessage());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     ApiError onInvalidRequest(MethodArgumentNotValidException e) {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { fetchDecks, fetchDueCards, fetchStats, fillReadingsFor, reviewCard } from '../api'
+import { useAuth } from '../auth-context'
 import Furigana from '../components/Furigana'
 import type { Card, Rating } from '../api'
 import { closestReading, finishKana, isCorrect, markMistakes, romajiToKana } from '../kana'
@@ -70,6 +71,8 @@ export default function ReviewPage() {
   const [fillError, setFillError] = useState<string | null>(null)
   const fillStarted = useRef(false)
   const navigate = useNavigate()
+  // 体验账号大家共用、只读：照常复习，但评分不往后端存，也不补读音
+  const demo = useAuth().user?.demo ?? false
 
   // ?deck=3 表示只复习这个包，不带就是全部
   const [searchParams] = useSearchParams()
@@ -94,7 +97,7 @@ export default function ReviewPage() {
    */
   const fillMissing = useCallback(async (cards: Card[]) => {
     const ids = cards.filter((c) => c.readingMissing).map((c) => c.id)
-    if (ids.length === 0 || fillStarted.current) return
+    if (ids.length === 0 || fillStarted.current || demo) return
     fillStarted.current = true
     setFilling(true)
     try {
@@ -112,7 +115,7 @@ export default function ReviewPage() {
     } finally {
       setFilling(false)
     }
-  }, [])
+  }, [demo])
 
   useEffect(() => {
     fetchDueCards(deckId)
@@ -157,7 +160,7 @@ export default function ReviewPage() {
       try {
         // 同一轮里再考又错：第一次已经记过「忘了」，不再扣一遍难度系数和忘记次数，只是再排回去
         const againInRetry = rating === 'AGAIN' && failed.current.has(current.id)
-        if (!againInRetry) {
+        if (!againInRetry && !demo) {
           await reviewCard(current.id, rating)
         }
 
@@ -177,7 +180,7 @@ export default function ReviewPage() {
         submitting.current = false
       }
     },
-    [current, index, queue, mode, startCard],
+    [current, index, queue, mode, startCard, demo],
   )
 
   function submit() {
@@ -323,7 +326,7 @@ export default function ReviewPage() {
       </div>
 
       <div className="py-12 text-center sm:py-16">
-        <div className="font-mincho text-5xl leading-tight sm:text-6xl">
+        <div lang="ja" className="font-mincho text-5xl leading-tight sm:text-6xl">
           <Furigana text={front} />
         </div>
 

@@ -1,0 +1,3 @@
+# 接口不给爬。页面大多要登录，爬到的也只是登录页
+User-agent: *
+Disallow: /api/
