@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { fetchExam, markQuestion, submitExam } from '../api'
-import type { Exam, ExamAttempt, MarkLevel } from '../api'
+import { explainQuestion, fetchExam, markQuestion, submitExam } from '../api'
+import type { Exam, ExamAttempt, MarkLevel, QuestionExplanation } from '../api'
 import { useAuth } from '../auth-context'
 import ExamText from '../components/ExamText'
 import AnalysisPanel from '../components/AnalysisPanel'
 import { useSelectionAnalysis } from '../selection'
 import type { SelectionAnalysis } from '../selection'
 import { examQuestions, formatClock } from '../exam'
+import { draftKey as keyFor, readDraft, writeDraft } from '../exam-draft'
 import type { ExamBlock, ExamPassage, ExamQuestion } from '../exam'
 
 /** 振り仮名开着还是关着。默认关 —— 考场上没有注音 */
@@ -16,40 +17,14 @@ const FURIGANA_KEY = 'kotoba:exam-furigana'
 /** 三档难度。颜色只用在选中的那一档和底部题号的小点上 */
 const LEVELS: { level: MarkLevel; label: string; on: string; dot: string }[] = [
   { level: 1, label: '简单', on: 'border-ai bg-ai text-washi', dot: 'bg-ai' },
-  { level: 2, label: '一般', on: 'border-hai bg-hai text-washi', dot: 'bg-hai' },
+  {
+    level: 2,
+    label: '一般',
+    on: 'border-hai bg-hai text-washi',
+    dot: 'bg-hai',
+  },
   { level: 3, label: '难', on: 'border-shu bg-shu text-washi', dot: 'bg-shu' },
 ]
-
-/**
- * 做到一半的答案和用时，存在这台设备上：不小心关了页面回来还在。
- * recorded 是做完一遍后记下的那次成绩，有了就不再重复记。
- */
-interface Draft {
-  answers: Record<number, number>
-  elapsed: number
-  recorded: number | null
-}
-
-function readDraft(key: string): Draft | null {
-  try {
-    const draft = JSON.parse(localStorage.getItem(key) ?? 'null')
-    if (draft && typeof draft.elapsed === 'number' && typeof draft.answers === 'object') {
-      return { ...draft, recorded: typeof draft.recorded === 'number' ? draft.recorded : null }
-    }
-  } catch {
-    // 读不出来就当没有
-  }
-  return null
-}
-
-function writeDraft(key: string, draft: Draft | null) {
-  try {
-    if (draft) localStorage.setItem(key, JSON.stringify(draft))
-    else localStorage.removeItem(key)
-  } catch {
-    // 无痕窗口之类存不了，这次照样能做
-  }
-}
 
 function readFurigana(): boolean {
   try {
@@ -91,7 +66,7 @@ export default function ExamPage() {
  */
 function ExamPaper({ examId }: { examId: number }) {
   const { user } = useAuth()
-  const draftKey = `kotoba:exam-draft:${user?.id}:${examId}`
+  const draftKey = keyFor(user?.id, examId)
   const [exam, setExam] = useState<Exam | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [answers, setAnswers] = useState<Record<number, number>>(
@@ -103,6 +78,11 @@ function ExamPaper({ examId }: { examId: number }) {
   )
   const [marks, setMarks] = useState<Record<number, MarkLevel>>({})
   const [filter, setFilter] = useState<Filter>(null)
+  const [explanations, setExplanations] = useState<Record<number, QuestionExplanation>>({})
+  // 解析展开着的题、正在生成解析的题、生成失败的原因
+  const [expanded, setExpanded] = useState<ReadonlySet<number>>(new Set())
+  const [explaining, setExplaining] = useState<ReadonlySet<number>>(new Set())
+  const [explainErrors, setExplainErrors] = useState<Record<number, string>>({})
   const [furigana, setFurigana] = useState(readFurigana)
   const selection = useSelectionAnalysis()
   const { showPanel } = selection
@@ -113,6 +93,7 @@ function ExamPaper({ examId }: { examId: number }) {
       .then((exam) => {
         setExam(exam)
         setMarks(exam.marks)
+        setExplanations(exam.explanations)
       })
       .catch((e) => setError(e instanceof Error ? e.message : '加载失败'))
   }, [examId])
@@ -131,10 +112,7 @@ function ExamPaper({ examId }: { examId: number }) {
   // 一题没做就不留草稿：只是点开看一眼，下次进来计时从零开始
   useEffect(() => {
     if (!exam) return
-    writeDraft(
-      draftKey,
-      Object.keys(answers).length > 0 ? { answers, elapsed, recorded } : null,
-    )
+    writeDraft(draftKey, Object.keys(answers).length > 0 ? { answers, elapsed, recorded } : null)
   }, [exam, draftKey, answers, elapsed, recorded])
 
   const questions = useMemo(() => (exam ? examQuestions(exam.content) : []), [exam])
@@ -209,11 +187,35 @@ function ExamPaper({ examId }: { examId: number }) {
     })
   }
 
+  // 生成过的点一下就是展开 / 收起；没生成过的先去要，到了再展开
+  async function explain(number: number) {
+    if (!exam || explaining.has(number)) return
+    if (explanations[number]) {
+      setExpanded((current) => toggled(current, number, !current.has(number)))
+      return
+    }
+    setExplaining((current) => toggled(current, number, true))
+    setExplainErrors(({ [number]: _, ...rest }) => rest)
+    try {
+      const explanation = await explainQuestion(exam.id, number)
+      setExplanations((current) => ({ ...current, [number]: explanation }))
+      setExpanded((current) => toggled(current, number, true))
+    } catch (e) {
+      setExplainErrors((current) => ({
+        ...current,
+        [number]: e instanceof Error ? e.message : '解析没生成出来',
+      }))
+    } finally {
+      setExplaining((current) => toggled(current, number, false))
+    }
+  }
+
   function restart() {
     setAnswers({})
     setElapsed(0)
     setRecorded(null)
     setFilter(null)
+    setExpanded(new Set())
     setError(null)
     window.scrollTo(0, 0)
   }
@@ -290,8 +292,13 @@ function ExamPaper({ examId }: { examId: number }) {
                     questions={passage.questions.filter(matches)}
                     answers={answers}
                     marks={marks}
+                    explanations={explanations}
+                    expanded={expanded}
+                    explaining={explaining}
+                    explainErrors={explainErrors}
                     onChoose={choose}
                     onMark={mark}
+                    onExplain={explain}
                   />
                 ))}
               </section>
@@ -327,9 +334,7 @@ function ScoreCard({ exam, attempt }: { exam: Exam; attempt: ExamAttempt }) {
   const rate = attempt.graded > 0 ? Math.round((attempt.correct / attempt.graded) * 100) : 0
   const ordinal = exam.attempts.length - exam.attempts.findIndex((a) => a.id === attempt.id)
   const sections = exam.content.sections.map((section) => {
-    const graded = section.passages
-      .flatMap((p) => p.questions)
-      .filter((q) => q.answer !== null)
+    const graded = section.passages.flatMap((p) => p.questions).filter((q) => q.answer !== null)
     return {
       name: section.name || section.label,
       right: graded.filter((q) => verdict(q, attempt.answers) === 'right').length,
@@ -411,15 +416,25 @@ function PassageView({
   questions,
   answers,
   marks,
+  explanations,
+  expanded,
+  explaining,
+  explainErrors,
   onChoose,
   onMark,
+  onExplain,
 }: {
   passage: ExamPassage
   questions: ExamQuestion[]
   answers: Record<number, number>
   marks: Record<number, MarkLevel>
+  explanations: Record<number, QuestionExplanation>
+  expanded: ReadonlySet<number>
+  explaining: ReadonlySet<number>
+  explainErrors: Record<number, string>
   onChoose: (number: number, choice: number) => void
   onMark: (number: number, level: MarkLevel) => void
+  onExplain: (number: number) => void
 }) {
   const groups: (ExamBlock | ExamBlock[])[] = []
   for (const block of passage.blocks) {
@@ -463,8 +478,12 @@ function PassageView({
             chosen={answers[question.number]}
             result={verdict(question, answers)}
             level={marks[question.number]}
+            explanation={expanded.has(question.number) ? explanations[question.number] : undefined}
+            explaining={explaining.has(question.number)}
+            explainError={explainErrors[question.number]}
             onChoose={(choice) => onChoose(question.number, choice)}
             onMark={(level) => onMark(question.number, level)}
+            onExplain={() => onExplain(question.number)}
           />
         ))}
       </div>
@@ -516,15 +535,24 @@ function QuestionView({
   chosen,
   result,
   level,
+  explanation,
+  explaining,
+  explainError,
   onChoose,
   onMark,
+  onExplain,
 }: {
   question: ExamQuestion
   chosen: number | undefined
   result: Verdict
   level: MarkLevel | undefined
+  /** 展开着才有 */
+  explanation: QuestionExplanation | undefined
+  explaining: boolean
+  explainError: string | undefined
   onChoose: (choice: number) => void
   onMark: (level: MarkLevel) => void
+  onExplain: () => void
 }) {
   const revealed = result !== 'open'
 
@@ -570,13 +598,12 @@ function QuestionView({
         ))}
       </div>
 
-      {result === 'ungraded' && (
-        <p className="mt-2 pl-3 text-xs text-hai">这题讲义里没给答案</p>
-      )}
+      {result === 'ungraded' && <p className="mt-2 pl-3 text-xs text-hai">这题讲义里没给答案</p>}
 
-      {/* 做过的、或者以前标过的题才显示：没做的题还谈不上难不难 */}
+      {/* 做过的、或者以前标过的题才显示：没做的题还谈不上难不难。
+          解析会亮出答案，做过才给 */}
       {(revealed || level !== undefined) && (
-        <div data-skip className="mt-3 flex items-center gap-2 pl-3 text-xs text-hai">
+        <div data-skip className="mt-3 flex flex-wrap items-center gap-2 pl-3 text-xs text-hai">
           <span className="mr-1">难度</span>
           {LEVELS.map(({ level: value, label, on }) => (
             <button
@@ -591,10 +618,79 @@ function QuestionView({
               {label}
             </button>
           ))}
+          {revealed && (
+            <button
+              onClick={onExplain}
+              disabled={explaining}
+              aria-expanded={explanation !== undefined}
+              className={`ml-3 transition hover:text-ai disabled:cursor-wait ${
+                explanation ? 'text-ai' : ''
+              }`}
+            >
+              {explaining ? '解析生成中…' : explanation ? '收起解析' : '解析'}
+            </button>
+          )}
         </div>
+      )}
+
+      {explainError && <p className="mt-2 pl-3 text-xs text-shu">{explainError}</p>}
+      {explanation && (
+        <ExplanationView explanation={explanation} answer={question.answer} chosen={chosen} />
       )}
     </section>
   )
+}
+
+/**
+ * 一道题的解析：考点、为什么选正解，然后四个选项逐个讲。
+ * 正解标蓝、选错的那项标红，和上面选项的颜色对得上。
+ */
+function ExplanationView({
+  explanation,
+  answer,
+  chosen,
+}: {
+  explanation: QuestionExplanation
+  answer: number | null
+  chosen: number | undefined
+}) {
+  return (
+    <div className="mt-3 ml-3 border-l-2 border-ai/40 pl-4 text-sm leading-relaxed">
+      {explanation.point && <p className="text-xs tracking-wider text-hai">{explanation.point}</p>}
+      {explanation.reason && <p className="mt-1.5">{explanation.reason}</p>}
+      <ol className="mt-3 space-y-2.5">
+        {explanation.choices.map((choice) => {
+          const tone =
+            choice.number === answer
+              ? 'border-ai bg-ai text-washi'
+              : choice.number === chosen
+                ? 'border-shu bg-shu text-washi'
+                : 'border-usu text-hai'
+          return (
+            <li key={choice.number} className="flex gap-3">
+              <span
+                className={`mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[0.65rem] tabular-nums ${tone}`}
+              >
+                {choice.number}
+              </span>
+              <span className="min-w-0">
+                <span>{choice.meaning}</span>
+                {choice.verdict && <span className="block text-hai">{choice.verdict}</span>}
+              </span>
+            </li>
+          )
+        })}
+      </ol>
+    </div>
+  )
+}
+
+/** 往集合里加一个或拿掉一个，回新的集合（state 不能原地改） */
+function toggled(set: ReadonlySet<number>, value: number, on: boolean): ReadonlySet<number> {
+  const next = new Set(set)
+  if (on) next.add(value)
+  else next.delete(value)
+  return next
 }
 
 function Choice({
@@ -800,6 +896,7 @@ function PracticeBar({
                 >
                   清掉答案重做
                 </button>
+                <span>难度标记会留着</span>
                 <button onClick={() => setConfirming(false)} className="transition hover:text-sumi">
                   算了
                 </button>

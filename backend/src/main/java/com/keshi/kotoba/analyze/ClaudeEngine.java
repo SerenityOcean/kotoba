@@ -9,7 +9,7 @@ import com.anthropic.models.messages.StructuredMessageCreateParams;
 import com.anthropic.models.messages.ThinkingConfigAdaptive;
 
 /**
- * 走 Anthropic 官方 SDK。结构化输出交给 SDK 自己从 {@link Analysis} 推 schema，
+ * 走 Anthropic 官方 SDK。结构化输出交给 SDK 自己从结果的 record 推 schema，
  * 不用我们传 —— 所以这里看不到 {@link AnalysisSchema}。
  */
 class ClaudeEngine implements AnalysisEngine {
@@ -23,13 +23,13 @@ class ClaudeEngine implements AnalysisEngine {
     }
 
     @Override
-    public Analysis analyze(String systemPrompt, String text) {
-        StructuredMessageCreateParams<Analysis> params = MessageCreateParams.builder()
+    public <T> T generate(String systemPrompt, String text, Class<T> type) {
+        StructuredMessageCreateParams<T> params = MessageCreateParams.builder()
                 .model(model)
                 .maxTokens(16000L)
                 .thinking(ThinkingConfigAdaptive.builder().build())
                 .system(systemPrompt)
-                .outputConfig(Analysis.class)
+                .outputConfig(type)
                 .addUserMessage(text)
                 .build();
 
@@ -38,7 +38,7 @@ class ClaudeEngine implements AnalysisEngine {
                     .flatMap(block -> block.text().stream())
                     .findFirst()
                     .map(block -> block.text())
-                    .orElseThrow(() -> new AnalysisFailedException("模型没有返回拆解结果", null));
+                    .orElseThrow(() -> new AnalysisFailedException("模型没有返回结果", null));
         } catch (RateLimitException e) {
             throw new AnalysisFailedException("请求太频繁了，等一会儿再试", e);
         } catch (AnthropicIoException e) {

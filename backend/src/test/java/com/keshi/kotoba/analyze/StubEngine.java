@@ -2,23 +2,23 @@ package com.keshi.kotoba.analyze;
 
 import org.springframework.beans.factory.ObjectProvider;
 
-/** 测试用的假引擎：analyze 回事先摆好的结果。 */
-class StubEngine implements AnalysisEngine {
+/** 测试用的假引擎：回事先摆好的结果。 */
+public class StubEngine implements AnalysisEngine {
 
-    private final Analysis result;
+    private final Object result;
 
-    String lastPrompt;
-    String lastText;
+    public String lastPrompt;
+    public String lastText;
 
-    StubEngine(Analysis result) {
+    public StubEngine(Object result) {
         this.result = result;
     }
 
     @Override
-    public Analysis analyze(String systemPrompt, String text) {
+    public <T> T generate(String systemPrompt, String text, Class<T> type) {
         this.lastPrompt = systemPrompt;
         this.lastText = text;
-        return result;
+        return type.cast(result);
     }
 
     @Override
@@ -27,7 +27,7 @@ class StubEngine implements AnalysisEngine {
     }
 
     /** 容器里没配 key 时就是 null，getIfAvailable() 回 null。 */
-    static ObjectProvider<AnalysisEngine> provide(AnalysisEngine engine) {
+    public static ObjectProvider<AnalysisEngine> provide(AnalysisEngine engine) {
         return new ObjectProvider<>() {
             @Override
             public AnalysisEngine getIfAvailable() {
