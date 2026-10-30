@@ -60,7 +60,7 @@ ruby > rt {
   animation: quote-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* 展示页：拆解条目一条条浮上来、今天那一格亮起来、自动演示时的小灯 */
+/* 展示页：卡片一张张浮上来、大福摇尾巴、偶尔眨眼 */
 @keyframes landing-rise {
   from {
     opacity: 0;
@@ -72,18 +72,20 @@ ruby > rt {
   }
 }
 
-@keyframes landing-pop {
-  from {
-    transform: scale(0.4);
-  }
-  to {
-    transform: none;
+@keyframes landing-wag {
+  50% {
+    transform: rotate(14deg);
   }
 }
 
-@keyframes landing-blink {
-  50% {
-    opacity: 0.25;
+@keyframes landing-wink {
+  0%,
+  92%,
+  100% {
+    transform: none;
+  }
+  95% {
+    transform: scaleY(0.1);
   }
 }
 
