@@ -4,3 +4,6 @@
 
 # demo/seed.py 生成的演示账号密码
 demo/accounts.*.txt
+
+# 付费资料包（入门牌组和故事），不进公开仓库
+starter-pack/
