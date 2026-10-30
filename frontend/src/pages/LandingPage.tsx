@@ -3,44 +3,55 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchAuthFeatures } from '../api'
 import { useAuth } from '../auth-context'
-import Furigana from '../components/Furigana'
-import { addDays, daysBetween, startOfDay } from '../goal-time'
 import { isCorrect, romajiToKana } from '../kana'
 
 /*
- * 没登录的人打开首页看到的那一页：一句日语走完 読 → 拆 → 記 → 到。
+ * 没登录的人打开首页看到的那一页：先读一小段故事，再讲读 → 存 → 考，最后是资料包。
  *
- * 舞台没人碰就自己演一遍（滚到它才开演），一碰就停下，交给访客自己选、自己勾、自己打。
- * 演示的内容都写死在这里：拆解结果、卡片都不调后端，打开这一页不花模型的钱。
- * 句子取自体验账号里那篇 N4 短文（demo/n4.json「アルバイトを始めました」）。
+ * 故事借资料包《リンの東京ノート》的人物：中国留学生小林和总偷吃早饭的白猫大福。
+ * 演示的内容都写死在这里，不调后端，打开这一页不花模型的钱。
  */
 
-const SENTENCE =
-  '最初[さいしょ]は敬語[けいご]が難[むずか]しくて、お客[きゃく]さんに話[はな]しかけられると緊張[きんちょう]してしまいました。'
-const TRANSLATION = '一开始觉得敬语很难，客人一跟我搭话，我就紧张起来。'
+/** 一个词：w 底字、r 读音（只给汉字）、g 释义。没释义的是标点、助词，不能点 */
+type Token = { w: string; r?: string; g?: string }
 
-const ITEMS = [
-  { kind: '动词', word: '話[はな]しかけられる', note: '← 話しかける。被动形：被客人搭话' },
-  { kind: '动词', word: '緊張[きんちょう]してしまう', note: '〜てしまう：控制不住地' },
-  { kind: '名词', word: '敬語[けいご]', note: '敬语：尊敬语、谦让语、郑重语的总称' },
-  { kind: '语法', word: '〜と', note: '一……就……：前项一发生，后项自然跟着来' },
+const STORY: Token[][] = [
+  [{ w: '朝', r: 'あさ', g: '早上' }, { w: '、' }, { w: 'テーブル', g: '桌子' }, { w: 'に' }, { w: 'パン', g: '面包' }, { w: 'が' }, { w: 'ありました', g: '有（过去式）' }, { w: '。' }],
+  [{ w: 'シャワー', g: '淋浴' }, { w: 'の' }, { w: 'あと', g: '……之后' }, { w: '、' }, { w: 'パン', g: '面包' }, { w: 'が' }, { w: 'ありません', g: '没有' }, { w: '。' }],
+  [{ w: '猫', r: 'ねこ', g: '猫' }, { w: 'の' }, { w: '大福', r: 'だいふく', g: '猫的名字，本来是一种糯米点心' }, { w: 'も', g: '也' }, { w: '、' }, { w: 'いません', g: '不在（人、动物）' }, { w: '。' }],
+  [{ w: '「' }, { w: '大福', r: 'だいふく', g: '猫的名字，本来是一种糯米点心' }, { w: '！' }, { w: 'また', g: '又、再一次' }, { w: '？」' }],
+]
+const STORY_ZH = '早上，桌上放着面包。洗完澡回来，面包没了。猫大福也不见了。「大福！又是你？」'
+
+/** 没人碰时自己挨个点的词：[行, 第几个] */
+const AUTO_PICKS = [
+  [2, 2],
+  [2, 0],
+  [0, 0],
+  [3, 3],
 ]
 
-const CARD = { front: '緊張', reading: 'きんちょう', romaji: 'kinchou', back: '名詞・サ変　紧张' }
+const CARD = { front: '猫', reading: 'ねこ', romaji: 'neko', back: '名詞　猫' }
 
-const STEPS = [
-  ['読', '读'],
-  ['拆', '拆'],
-  ['記', '记'],
-  ['到', '到'],
-]
+/** 「存」那一格默认的三张卡；在上面的故事里加过的词会换上来 */
+const STACK = ['朝', 'また', '猫']
+
+const PACK = {
+  slug: 'tokyo-note-n5',
+  title: 'リンの東京ノート',
+  level: 'N5 · 入门',
+  summary: '100 个 N5 核心词，配 20 个连载小故事：中国留学生小林和一只总偷吃早饭的猫，在东京的第一年。',
+  fan: ['先生', '友達', '学生'],
+  cards: 100,
+  articles: 20,
+  price: '¥0.99',
+}
 
 const FEATURES = [
-  ['読', '阅读', '存下读过的文章，全文注音；选中一段就地拆解，原文一个字不改。'],
-  ['考', '应试', '导入真题，逐题对答案，AI 把每个选项讲一遍，还能给每题标难度。'],
-  ['拆', '拆解', '翻译、动词活用、名词、语法点，勾选就是卡片，重复的自动跳过。'],
-  ['記', '卡片', '间隔重复，打字考读音；打错要照着打对一遍。Anki 牌组也能导入。'],
-  ['到', '彼岸', '立一个考试日，看还剩几周几天、经过哪些节气、每天做了多少。'],
+  ['読', '阅读', '存下读过的文章，全文注音，选中一段就地拆解。'],
+  ['拆', '拆解', '翻译、动词活用、语法点，勾选就是卡片。'],
+  ['考', '应试', '导入 JLPT 真题，逐题对答案，每个选项都讲一遍。'],
+  ['到', '彼岸', '立一个考试日，看还剩几周几天、每天做了多少。'],
 ]
 
 const PRIMARY =
@@ -49,6 +60,8 @@ const PRIMARY =
 export default function LandingPage() {
   // null = 还没问到；问不到就当没开体验账号，只给注册
   const [demo, setDemo] = useState<boolean | null>(null)
+  // 在故事里点「+ 卡片」加过的词，下面「存」那一格拿来用
+  const [saved, setSaved] = useState<string[]>([])
 
   useEffect(() => {
     fetchAuthFeatures()
@@ -58,30 +71,84 @@ export default function LandingPage() {
 
   return (
     <div>
-      <section className="pb-10 text-center">
-        <h2 className="font-mincho text-[1.625rem] tracking-[0.08em] sm:text-4xl">一句话，从读到记住。</h2>
-        <p className="mt-4 text-sm text-balance text-hai">
-          这句来自一篇 N4 短文。跟着它把言葉走一遍，大约三十秒。
-        </p>
+      <section className="grid items-end gap-7 md:grid-cols-[1fr_auto]">
+        <div>
+          <p className="flex items-center gap-2 text-xs tracking-[0.12em] text-hai">
+            <span className="size-1.5 rounded-full bg-ai" />
+            零基础也能读
+          </p>
+          <h2 className="mt-4 font-mincho text-[1.9rem] leading-[1.4] tracking-[0.05em] sm:text-5xl">
+            五十音背完了，
+            <br />
+            下一步，读个故事。
+          </h2>
+          <p className="mt-5 max-w-[30em] text-[15px] leading-[1.9] text-hai">
+            中国留学生<span className="text-sumi">小林</span>和她那只总偷吃早饭的白猫
+            <span className="text-sumi">大福</span>，在东京的第一年。每个词都注了读音，点一下就知道意思。
+          </p>
+        </div>
+        <Cta demo={demo} />
       </section>
 
-      <Stage cta={<Cta demo={demo} />} />
+      <StoryBook onSave={(w) => setSaved((s) => (s.includes(w) ? s : [...s, w]))} />
 
-      <section className="grid grid-cols-1 gap-x-7 gap-y-9 pt-28 pb-10 sm:grid-cols-3 lg:grid-cols-5">
-        {FEATURES.map(([jp, name, text]) => (
-          <div key={jp} className="border-t border-usu pt-4">
-            <p className="font-mincho text-2xl">
-              {jp}
-              <span className="ml-2 font-ui text-xs text-hai">{name}</span>
-            </p>
-            <p className="mt-2.5 text-[13px] leading-relaxed text-hai">{text}</p>
+      <section className="pt-24 text-center">
+        <h3 className="font-mincho text-[1.375rem] tracking-[0.08em] text-balance sm:text-3xl">大福偷吃的是早饭，你留下的是词。</h3>
+        <p className="mt-2.5 text-[13px] text-hai">每天就三件事</p>
+      </section>
+      <Komas stack={[...STACK, ...saved].slice(-3)} />
+
+      <section className="mt-24 grid gap-7 border-t border-usu pt-7 md:grid-cols-[1fr_1.3fr] md:gap-14">
+        <div>
+          <h3 className="font-mincho text-2xl leading-relaxed tracking-[0.08em]">
+            读完小林的第一年，
+            <br />
+            还有 N4、N3 的路。
+          </h3>
+          <p className="mt-2.5 text-[13.5px] leading-[1.85] text-hai">
+            言葉不只给初学者。存自己的文章、做真题、拆长难句，一直用到考试那天。
+          </p>
+        </div>
+        <ul>
+          {FEATURES.map(([jp, name, text]) => (
+            <li
+              key={jp}
+              className="grid grid-cols-[2.4rem_1fr] items-baseline gap-x-2 border-b border-usu py-3.5 text-[13.5px] text-hai sm:grid-cols-[2.75rem_4.5rem_1fr]"
+            >
+              <span className="font-mincho text-2xl text-sumi">{jp}</span>
+              <span className="text-sumi">{name}</span>
+              <span className="col-start-2 sm:col-start-auto">{text}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="mt-24 grid items-center gap-9 md:grid-cols-[1.1fr_1fr] md:gap-14">
+        <div>
+          <p className="text-xs tracking-[0.25em] text-hai">资料包</p>
+          <h3 className="mt-3 font-mincho text-2xl leading-normal tracking-[0.06em] sm:text-[2rem]">
+            作者亲手做的学习包。
+          </h3>
+          <p className="mt-4 text-sm leading-[1.9] text-hai">
+            词挑好了、卡片做好了、配套的文章也写好了。解锁后整包放进你的账号，接着读、接着背。
+            不同级别、不同主题会陆续出，第一本是给零基础的《<span lang="ja">リンの東京ノート</span>》。
+          </p>
+          <div className="mt-7 flex flex-wrap items-center gap-x-7 gap-y-4">
+            <Link to="/login?mode=register" state={{ from: `/library/${PACK.slug}/trial` }} className={PRIMARY}>
+              注册，先试读 <span aria-hidden>→</span>
+            </Link>
+            <Link to="/library" className="text-sm text-ai underline-offset-4 hover:underline">
+              看看都有什么
+            </Link>
           </div>
-        ))}
+        </div>
+        <PackCover />
       </section>
 
-      <section className="pt-16 pb-8 text-center">
-        <h2 className="font-mincho text-2xl tracking-[0.08em] sm:text-3xl">你读过的，才是你的词汇表。</h2>
-        <div className="mt-9">
+      <section className="pt-28 pb-6 text-center">
+        <p className="font-mincho text-[1.375rem] tracking-[0.08em]">大福还在等下一顿早饭。</p>
+        <p className="mt-2 text-[13px] text-hai">小林的东京第一年，在资料包里接着写。</p>
+        <div className="mt-9 flex justify-center">
           <Cta demo={demo} />
         </div>
       </section>
@@ -112,7 +179,7 @@ function Cta({ demo }: { demo: boolean | null }) {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-center gap-x-7 gap-y-4">
+      <div className="flex flex-wrap items-center gap-x-7 gap-y-4">
         {demo ? (
           <button onClick={enter} disabled={entering} className={PRIMARY}>
             {entering ? '正在进去…' : '用演示账号看看'}
@@ -130,343 +197,390 @@ function Cta({ demo }: { demo: boolean | null }) {
           {demo ? '注册一个' : '登录'}
         </Link>
       </div>
-      {error && <p className="mt-3 text-center text-sm text-shu">{error}</p>}
+      {error && <p className="mt-3 text-sm text-shu">{error}</p>}
     </div>
   )
 }
 
 /**
- * 舞台：宽屏上四幕叠在同一格里，容器高度跟着最高的那幕走，换幕时不跳；
- * 手机上「拆」那一幕太高，叠着放别的幕底下会空一大截，所以只留当前这一幕。
- * 不在当前的幕设成 inert，Tab 不会跳进看不见的输入框。
+ * 翻开的那一页：左边是资料包的书脊，右边是故事。词都能点，点了在底下一行出读音和释义，
+ * 可以「+ 卡片」。没人碰时自己挨个点几个词；一碰就停。
  */
-function Stage({ cta }: { cta: ReactNode }) {
-  const [step, setStep] = useState(0)
-  const [auto, setAuto] = useState(true)
-  const [visible, setVisible] = useState(false)
-  const [selected, setSelected] = useState(false)
-  const [ticked, setTicked] = useState(() => ITEMS.map(() => false))
-  const [typed, setTyped] = useState('')
-  const [lit, setLit] = useState(false)
-  const ref = useRef<HTMLElement>(null)
+function StoryBook({ onSave }: { onSave: (word: string) => void }) {
+  const [picked, setPicked] = useState<[number, number] | null>(null)
+  const [touched, setTouched] = useState(false)
+  const [added, setAdded] = useState<string[]>([])
+  const [zh, setZh] = useState(false)
 
-  const right = isCorrect(typed, CARD.reading)
-  const wrong = !right && /^[ぁ-ゖー]+$/.test(typed) && typed.length >= CARD.reading.length
-  const count = ticked.filter(Boolean).length
-
-  // 滚到舞台才开演，不然人还没看到就演完了
   useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setVisible(true)
-          io.disconnect()
-        }
-      },
-      { threshold: 0.4 },
-    )
-    io.observe(el)
-    return () => io.disconnect()
-  }, [])
-
-  // 自动演示：每一幕排好接下来几步；换幕、被接手时清掉
-  useEffect(() => {
-    if (!auto || !visible) return
-    const timers: number[] = []
-    const at = (ms: number, fn: () => void) => timers.push(window.setTimeout(fn, ms))
-    const tick = (i: number) => setTicked((t) => t.map((v, j) => (j === i ? true : v)))
-
-    if (step === 0) {
-      at(2200, () => setSelected(true))
-      at(3300, () => setStep(1))
-    } else if (step === 1) {
-      at(1300, () => tick(0))
-      at(1900, () => tick(2))
-      at(2900, () => setStep(2))
-    } else if (step === 2) {
-      ;[...CARD.romaji].forEach((_, i) =>
-        at(1000 + i * 190, () => setTyped(romajiToKana(CARD.romaji.slice(0, i + 1)))),
-      )
+    if (touched) return
+    let k = 0
+    const pick = () => setPicked(AUTO_PICKS[k++ % AUTO_PICKS.length] as [number, number])
+    const first = window.setTimeout(pick, 700)
+    const every = window.setInterval(pick, 2000)
+    return () => {
+      clearTimeout(first)
+      clearInterval(every)
     }
-    return () => timers.forEach(clearTimeout)
-  }, [step, auto, visible])
+  }, [touched])
 
-  // 读音打对了，停一下让人看见背面，再去最后一幕；自动演示到这儿就演完了
-  useEffect(() => {
-    if (step !== 2 || !right) return
-    const t = window.setTimeout(() => {
-      setStep(3)
-      setAuto(false)
-    }, 1100)
-    return () => clearTimeout(t)
-  }, [step, right])
+  const token = picked && STORY[picked[0]][picked[1]]
 
-  // 到了最后一幕，今天那一格亮起来
-  useEffect(() => {
-    if (step !== 3) return
-    const t = window.setTimeout(() => setLit(true), 500)
-    return () => clearTimeout(t)
-  }, [step])
-
-  function replay() {
-    setSelected(false)
-    setTicked(ITEMS.map(() => false))
-    setTyped('')
-    setLit(false)
-    setAuto(true)
-    setStep(0)
+  function add(w: string) {
+    setTouched(true)
+    setAdded((a) => [...a, w])
+    onSave(w)
   }
-
-  // 真的去选中那句话：选中了就拆
-  function onSentenceMouseUp() {
-    const selection = window.getSelection()
-    if (!selection?.toString().trim()) return
-    selection.removeAllRanges()
-    setSelected(true)
-    window.setTimeout(() => setStep(1), 350)
-  }
-
-  const status = auto ? (visible ? '自动演示中 · 点任意处接手' : '') : step === 3 ? '走完了' : '轮到你了'
 
   return (
-    <section
-      ref={ref}
-      // 一碰舞台就停下自动演示，交给访客；「从头再来」除外
-      onPointerDownCapture={(e) => {
-        if (auto && !(e.target as HTMLElement).closest('[data-replay]')) setAuto(false)
-      }}
-      className="border border-usu px-5 pt-8 pb-6 sm:px-14 sm:pt-10"
-    >
-      <ol className="mx-auto mb-2 flex max-w-md">
-        {STEPS.map(([jp, zh], i) => (
-          <li key={jp} className="relative flex-1">
-            {i > 0 && (
-              <span
-                className={`absolute top-[18px] right-1/2 h-px w-full transition-colors duration-500 ${
-                  i <= step ? 'bg-sumi' : 'bg-usu'
-                }`}
-              />
-            )}
-            <button
-              onClick={() => setStep(i)}
-              className={`relative z-10 flex w-full flex-col items-center gap-2 text-[11px] tracking-[0.2em] transition-colors ${
-                i <= step ? 'text-sumi' : 'text-hai'
-              }`}
-            >
-              <span
-                className={`grid size-9 place-items-center rounded-full border font-mincho text-base tracking-normal transition-colors duration-500 ${
-                  i === step
-                    ? 'border-ai bg-ai text-washi'
-                    : i < step
-                      ? 'border-sumi bg-washi'
-                      : 'border-usu bg-washi'
+    <div className="relative mt-16">
+      <Daifuku />
+      <div className="tint-take grid overflow-hidden rounded-[20px] border border-[var(--edge)] bg-[var(--tint)] md:grid-cols-[15rem_1fr]">
+        <div className="flex items-center gap-6 border-b border-[var(--edge)] px-6 py-5 text-[var(--ink)] md:flex-col md:items-stretch md:justify-between md:border-r md:border-b-0 md:py-6">
+          <span className="font-mincho text-[4rem] leading-none md:text-[6rem]">猫</span>
+          <div>
+            <p className="text-[0.7rem] tracking-[0.25em]">{PACK.level}</p>
+            <p lang="ja" className="mt-1.5 font-mincho text-xl tracking-[0.12em] text-sumi">
+              {PACK.title}
+            </p>
+          </div>
+          <ol className="hidden flex-wrap gap-1.5 md:flex" aria-hidden>
+            {Array.from({ length: PACK.articles }, (_, i) => (
+              <li
+                key={i}
+                className={`grid size-[26px] place-items-center rounded-md border text-[11px] ${
+                  i === 0
+                    ? 'border-[var(--ink)] bg-[var(--ink)] text-[var(--tint)]'
+                    : 'border-[var(--edge)] bg-washi/50 text-[var(--ink)]/55'
                 }`}
               >
-                {jp}
-              </span>
-              {zh}
-            </button>
-          </li>
-        ))}
-      </ol>
+                {i + 1}
+              </li>
+            ))}
+          </ol>
+        </div>
 
-      <div className="grid sm:min-h-[25rem]">
-        <Scene active={step === 0}>
-          <p className="mb-6 text-xs tracking-[0.25em] text-hai">读一篇文章，振り仮名已经注好了</p>
-          <p
-            lang="ja"
-            onMouseUp={onSentenceMouseUp}
-            className="max-w-[16em] font-mincho text-[1.375rem] leading-[2.3] text-balance [overflow-wrap:anywhere] [word-break:auto-phrase] sm:text-[1.9rem]"
-          >
-            <span className={`transition-colors duration-500 [box-decoration-break:clone] ${selected ? 'bg-ai/15' : ''}`}>
-              <Furigana text={SENTENCE} />
+        <div className="bg-washi px-5 pt-6 pb-5 sm:px-11 sm:pt-9 sm:pb-7">
+          <p className="flex items-baseline gap-3.5 text-xs text-hai">
+            <span lang="ja" className="font-mincho text-[1.375rem] tracking-[0.1em] text-sumi">
+              <ruby>
+                朝<rt>あさ</rt>
+              </ruby>
+              ご
+              <ruby>
+                飯<rt>はん</rt>
+              </ruby>
+              がない
             </span>
+            试读 · 早饭不见了
           </p>
-          <p className="mt-7 text-[13px] text-hai">
-            看不懂？用鼠标选中这句 —— 或者
-            <button onClick={() => setStep(1)} className="ml-1 text-ai underline-offset-4 hover:underline">
-              直接拆开
-            </button>
-          </p>
-        </Scene>
-
-        <Scene active={step === 1} className="sm:justify-start sm:pt-4">
-          <p lang="ja" className="font-mincho text-lg leading-[2.2]">
-            <span className="bg-ai/15 [box-decoration-break:clone]">
-              <Furigana text={SENTENCE} />
-            </span>
-          </p>
-          <p className="mt-1.5 mb-5 text-sm text-hai">{TRANSLATION}</p>
-          <div className="grid w-full max-w-lg gap-2.5 text-left">
-            {ITEMS.map((item, i) => (
-              <label
-                key={item.word}
-                style={{ animationDelay: `${i * 0.12}s` }}
-                className={`flex cursor-pointer items-start gap-3 border px-4 py-3 transition-colors ${
-                  ticked[i] ? 'border-ai/45 bg-ai/5' : 'border-usu'
-                } ${step === 1 ? 'motion-safe:animate-[landing-rise_0.6s_cubic-bezier(0.22,1,0.36,1)_both]' : ''}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={ticked[i]}
-                  onChange={() => setTicked((t) => t.map((v, j) => (j === i ? !v : v)))}
-                  className="mt-1.5 size-3.5 shrink-0 accent-ai"
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="mr-2.5 text-[10px] tracking-[0.2em] text-hai">{item.kind}</span>
-                  <span lang="ja" className="font-mincho text-base">
-                    <Furigana text={item.word} />
+          <div lang="ja" className="mt-3.5 font-mincho text-xl leading-[2.3] sm:text-2xl">
+            {STORY.map((line, li) => (
+              <p key={li}>
+                {chunks(line).map((chunk, ci) => (
+                  <span key={ci} className="whitespace-nowrap">
+                    {chunk.map(({ token: t, i }) =>
+                      t.g ? (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => {
+                            setTouched(true)
+                            setPicked([li, i])
+                          }}
+                          className={`rounded-[2px] px-px underline decoration-ai/50 decoration-dotted decoration-[1.5px] underline-offset-[0.32em] transition-colors ${
+                            picked?.[0] === li && picked[1] === i ? 'bg-ai/15 text-ai' : 'hover:bg-ai/8'
+                          }`}
+                        >
+                          <Word token={t} />
+                        </button>
+                      ) : (
+                        <Word key={i} token={t} />
+                      ),
+                    )}
                   </span>
-                  <span className="mt-0.5 block text-[12.5px] leading-relaxed text-hai">{item.note}</span>
-                </span>
-              </label>
+                ))}
+              </p>
             ))}
           </div>
-          <button onClick={() => setStep(2)} disabled={count === 0} className={`${PRIMARY} mt-6`}>
-            {count === 0 ? '勾几条，建成卡片' : `建成 ${count} 张卡片`}
-            {count > 0 && <span aria-hidden>→</span>}
-          </button>
-        </Scene>
+          <p
+            className={`overflow-hidden text-[13px] leading-relaxed text-hai transition-all duration-500 ${
+              zh ? 'mt-2.5 max-h-16 opacity-100' : 'max-h-0 opacity-0'
+            }`}
+          >
+            {STORY_ZH}
+          </p>
 
-        <Scene active={step === 2}>
-          <p className="mb-6 text-xs tracking-[0.25em] text-hai">卡片到期了，看正面、打读音</p>
-          <div className="w-[min(20rem,100%)] border border-usu bg-washi px-6 pt-11 pb-8 shadow-[8px_8px_0_-1px_var(--color-washi),8px_8px_0_0_var(--color-usu),16px_16px_0_-1px_var(--color-washi),16px_16px_0_0_var(--color-usu)]">
-            <p lang="ja" className="font-mincho text-[3.5rem] leading-tight">
-              {CARD.front}
+          <div className="mt-4 flex min-h-12 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-dashed border-usu pt-3.5">
+            <p className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+              {token ? (
+                <>
+                  <span lang="ja" className="font-mincho text-xl">
+                    {token.w}
+                  </span>
+                  {token.r && (
+                    <span lang="ja" className="font-mincho text-[13px] text-ai">
+                      {token.r}
+                    </span>
+                  )}
+                  <span>{token.g}</span>
+                  <button
+                    type="button"
+                    disabled={added.includes(token.w)}
+                    onClick={() => add(token.w)}
+                    className="rounded-full border border-usu px-2.5 py-0.5 text-xs text-ai transition hover:border-ai disabled:border-usu disabled:text-hai"
+                  >
+                    {added.includes(token.w) ? '✓ 已加入' : '+ 卡片'}
+                  </button>
+                </>
+              ) : (
+                <span className="text-[13px] text-hai">点一个带下划线的词</span>
+              )}
             </p>
-            <input
-              value={typed}
-              onChange={(e) =>
-                setTyped(
-                  (e.nativeEvent as InputEvent).isComposing ? e.target.value : romajiToKana(e.target.value),
-                )
-              }
+            <button type="button" onClick={() => setZh(!zh)} className="text-xs text-ai">
+              {zh ? '收起中文' : '看中文'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** 标点跟着前面的词，不让「。」一个人掉到下一行；「「」跟着后面的词 */
+function chunks(line: Token[]) {
+  const out: { token: Token; i: number }[][] = []
+  let pending: { token: Token; i: number }[] = []
+  line.forEach((token, i) => {
+    if (token.g) {
+      out.push([...pending, { token, i }])
+      pending = []
+    } else if (/^[「『（]/.test(token.w) || out.length === 0) {
+      pending.push({ token, i })
+    } else {
+      out[out.length - 1].push({ token, i })
+    }
+  })
+  if (pending.length) out.push(pending)
+  return out
+}
+
+function Word({ token }: { token: Token }) {
+  if (!token.r) return <>{token.w}</>
+  return (
+    <ruby>
+      {token.w}
+      <rt>{token.r}</rt>
+    </ruby>
+  )
+}
+
+/** 大福：一团糯米似的白猫，趴在那一页的右上角，摇尾巴、偶尔眨眼 */
+function Daifuku() {
+  const line = 'fill-none stroke-sumi [stroke-linecap:round] [stroke-width:1.6]'
+  return (
+    <svg
+      viewBox="0 0 100 70"
+      aria-hidden
+      className="absolute -top-[50px] right-5 z-10 w-24 sm:-top-[62px] sm:right-10 sm:w-29"
+    >
+      <path
+        className={`${line} origin-[82px_60px] motion-safe:animate-[landing-wag_3.2s_ease-in-out_infinite]`}
+        d="M82 58 C 96 54, 98 40, 90 34"
+      />
+      <path
+        className="fill-washi stroke-sumi [stroke-width:1.6]"
+        d="M14 64 C 8 50, 12 30, 22 22 L 24 8 L 36 18 C 44 15, 56 15, 64 18 L 76 8 L 78 22 C 88 30, 92 50, 86 64 Z"
+      />
+      <g className="origin-[50px_36px] motion-safe:animate-[landing-wink_5s_infinite]">
+        <path className={line} d="M36 36 q 4 3 8 0" />
+        <path className={line} d="M56 36 q 4 3 8 0" />
+      </g>
+      <ellipse className="fill-shu/35" cx="32" cy="44" rx="4" ry="2.2" />
+      <ellipse className="fill-shu/35" cx="68" cy="44" rx="4" ry="2.2" />
+      <path className={line} d="M48 42 q 2 2 4 0" />
+      <path className={line} d="M20 44 h -10 M21 48 l -9 3 M80 44 h 10 M79 48 l 9 3" />
+    </svg>
+  )
+}
+
+/** 三格：读 → 存 → 考 */
+function Komas({ stack }: { stack: string[] }) {
+  return (
+    <section className="mt-6 grid gap-3.5 md:grid-cols-3">
+      <Koma no="其の一" title="读" text="全文注好振り仮名，不认识的词点一下。">
+        <div className="text-center">
+          <p lang="ja" className="mb-3.5 font-mincho text-[2.5rem]">
+            <ruby>
+              大福<rt>だいふく</rt>
+            </ruby>
+          </p>
+          <span className="relative inline-block rounded-xl border border-usu bg-washi px-4 py-2.5 text-[13px] after:absolute after:-bottom-[6px] after:left-5 after:size-2.5 after:rotate-45 after:border-r after:border-b after:border-usu after:bg-washi">
+            猫的名字 · 本来是一种糯米点心
+          </span>
+        </div>
+      </Koma>
+      <Koma no="其の二" title="存" text="想记住的，加成卡片，一个词一张。">
+        <div className="relative size-30">
+          {stack.map((w, i) => (
+            <span
+              key={`${i}-${w}`}
               lang="ja"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="off"
-              spellCheck={false}
-              placeholder="打读音，罗马字也行"
-              aria-label="打读音"
-              className={`mt-7 w-full border-b bg-transparent pb-2 text-center font-mincho text-2xl placeholder:font-ui placeholder:text-sm placeholder:text-hai/50 focus:outline-none ${
-                right ? 'border-ai text-ai' : wrong ? 'border-shu text-shu' : 'border-usu focus:border-ai'
-              }`}
-            />
-            <p
-              className={`overflow-hidden text-sm text-hai transition-all duration-500 ${
-                right ? 'mt-4 max-h-20 opacity-100' : 'max-h-0 opacity-0'
+              className={`absolute inset-0 grid place-items-center rounded-[10px] border border-usu bg-washi font-mincho text-3xl shadow-[0_8px_18px_-12px_rgb(0_0_0/0.35)] transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:animate-[landing-rise_0.6s_cubic-bezier(0.22,1,0.36,1)_both] ${
+                [
+                  '-translate-x-5 translate-y-1.5 -rotate-10 group-hover:-translate-x-9 group-hover:-rotate-16',
+                  'translate-x-5 translate-y-0.5 rotate-6 group-hover:translate-x-9 group-hover:rotate-11',
+                  '',
+                ][i]
               }`}
             >
-              {CARD.back}　·　<span className="text-ai">記住了</span>
-            </p>
-          </div>
-          <p className="mt-8 text-[13px] text-hai">
-            罗马字边打边变成假名 —— 试试 <code className="font-mono text-sumi">{CARD.romaji}</code>
-          </p>
-        </Scene>
-
-        <Scene active={step === 3}>
-          <h3 className="font-mincho text-[1.375rem] tracking-[0.06em] sm:text-3xl">今天这一格，亮了。</h3>
-          <Footprints lit={lit} />
-          <Countdown />
-          <div className="mt-8">{cta}</div>
-        </Scene>
-      </div>
-
-      <div className="mt-4 flex items-center justify-between gap-3 border-t border-usu pt-4 text-xs text-hai">
-        <button
-          onClick={() => setStep(Math.max(0, step - 1))}
-          className={`transition hover:text-ai ${step === 0 ? 'invisible' : ''}`}
-        >
-          ← 上一步
-        </button>
-        <span className="flex items-center gap-2">
-          {status && (
-            <span
-              className={`size-1.5 rounded-full ${auto ? 'bg-ai motion-safe:animate-[landing-blink_1.6s_infinite]' : 'bg-usu'}`}
-            />
-          )}
-          {status}
-        </span>
-        <button data-replay onClick={replay} className="transition hover:text-ai">
-          从头再来
-        </button>
-      </div>
+              {w}
+            </span>
+          ))}
+        </div>
+      </Koma>
+      <Koma no="其の三" title="考" text="隔几天它回来考你：看字，打读音。">
+        <TypingCard />
+      </Koma>
     </section>
   )
 }
 
-function Scene({ active, className = '', children }: { active: boolean; className?: string; children: ReactNode }) {
+function Koma({ no, title, text, children }: { no: string; title: string; text: string; children: ReactNode }) {
   return (
-    <div
-      aria-hidden={!active}
-      inert={!active}
-      className={`col-start-1 row-start-1 flex flex-col items-center justify-start pt-6 text-center sm:justify-center sm:pt-0 motion-safe:transition motion-safe:duration-700 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] ${
-        active
-          ? 'opacity-100 motion-safe:delay-150'
-          : 'pointer-events-none invisible translate-y-3 opacity-0 max-sm:hidden'
-      } ${className}`}
-    >
-      {children}
+    <div className="group flex min-h-[17.5rem] flex-col rounded-[4px] border-[1.5px] border-sumi p-5.5">
+      <span className="font-mincho text-[13px] tracking-[0.2em] text-hai">{no}</span>
+      <h4 className="mt-1.5 font-mincho text-[1.3rem] tracking-[0.08em]">{title}</h4>
+      <p className="mt-2 text-[13px] leading-relaxed text-hai">{text}</p>
+      <div className="grid flex-1 place-items-center pt-5">{children}</div>
     </div>
   )
 }
 
-/** 按复习量分档的颜色，和彼岸页的足迹格子一样 */
-const FILLS = ['border border-usu', 'bg-ai/30', 'bg-ai/50', 'bg-ai/70', 'bg-ai']
-const WEEKS_BACK = 8
-const WEEKS_AHEAD = 6
+/** 打字卡：滚到它就自己打一遍 neko；访客一点输入框就清空，交给他打 */
+function TypingCard() {
+  const [typed, setTyped] = useState('')
+  const [mine, setMine] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
 
-/** 足迹格子：一列一周，往回八周、往后六周。走过的日子是编的，每次打开都是同一幅 */
-function Footprints({ lit }: { lit: boolean }) {
-  const today = startOfDay(new Date())
-  const start = addDays(today, -(WEEKS_BACK * 7 + today.getDay()))
-  const passed = daysBetween(start, today)
+  const right = isCorrect(typed, CARD.reading)
+  const wrong = !right && /^[ぁ-ゖー]+$/.test(typed) && typed.length >= CARD.reading.length
 
-  return (
-    <div className="mx-auto mt-7 grid w-max grid-flow-col grid-rows-7 gap-1 sm:gap-[5px]" aria-hidden>
-      {Array.from({ length: (WEEKS_BACK + WEEKS_AHEAD + 1) * 7 }, (_, i) => {
-        if (i === passed) {
-          return (
-            <span
-              key={i}
-              className={`size-2.5 rounded-[2px] outline outline-1 outline-offset-2 outline-ai sm:size-3.5 ${
-                lit ? 'bg-ai motion-safe:animate-[landing-pop_0.7s_cubic-bezier(0.34,1.56,0.64,1)]' : 'border border-usu'
-              }`}
-            />
-          )
-        }
-        // 固定的伪随机：周末多做一点，偶尔歇一天
-        const r = Math.abs(Math.sin(i * 12.9898 + 4.1) * 43758.5453) % 1
-        const weekend = i % 7 === 0 || i % 7 === 6
-        const level = i > passed || r < 0.12 ? 0 : Math.min(4, 1 + Math.floor(r * 3.2) + (weekend ? 1 : 0))
-        return <span key={i} className={`size-2.5 rounded-[2px] sm:size-3.5 ${FILLS[level]}`} />
-      })}
-    </div>
-  )
-}
-
-/** 下一次 JLPT：每年 7 月和 12 月的第一个星期日，和 demo/seed.py 给体验账号立的目标同一天 */
-function nextJlpt(today: Date): Date {
-  for (let year = today.getFullYear(); ; year++) {
-    for (const month of [6, 11]) {
-      const first = new Date(year, month, 1)
-      const sunday = addDays(first, (7 - first.getDay()) % 7)
-      if (sunday > today) return sunday
+  useEffect(() => {
+    const el = ref.current
+    if (!el || mine) return
+    const timers: number[] = []
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        io.disconnect()
+        ;[...CARD.romaji].forEach((_, i) =>
+          timers.push(
+            window.setTimeout(() => setTyped(romajiToKana(CARD.romaji.slice(0, i + 1))), 900 + i * 220),
+          ),
+        )
+      },
+      { threshold: 0.6 },
+    )
+    io.observe(el)
+    return () => {
+      io.disconnect()
+      timers.forEach(clearTimeout)
     }
-  }
+  }, [mine])
+
+  return (
+    <div ref={ref} className="w-[min(14rem,100%)] text-center">
+      <p lang="ja" className="font-mincho text-[3.5rem] leading-tight">
+        {CARD.front}
+      </p>
+      <input
+        value={typed}
+        onFocus={() => {
+          if (mine) return
+          setMine(true)
+          setTyped('')
+        }}
+        onChange={(e) =>
+          setTyped((e.nativeEvent as InputEvent).isComposing ? e.target.value : romajiToKana(e.target.value))
+        }
+        lang="ja"
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
+        placeholder={`试试打 ${CARD.romaji}`}
+        aria-label="打读音"
+        className={`mt-4 w-full border-b bg-transparent pb-1.5 text-center font-mincho text-[1.375rem] placeholder:font-ui placeholder:text-xs placeholder:text-hai/60 focus:outline-none ${
+          right ? 'border-ai text-ai' : wrong ? 'border-shu text-shu' : 'border-usu focus:border-ai'
+        }`}
+      />
+      <p
+        className={`overflow-hidden text-[13px] text-hai transition-all duration-500 ${
+          right ? 'mt-3 max-h-10 opacity-100' : 'max-h-0 opacity-0'
+        }`}
+      >
+        {CARD.back} · <span className="text-ai">記住了</span>
+      </p>
+    </div>
+  )
 }
 
-function Countdown() {
-  const today = startOfDay(new Date())
-  const days = daysBetween(today, nextJlpt(today))
+/**
+ * 资料包封面，和资料页的 PackTile 一个样子（竹色那组）。
+ * 右上角那叠卡错开得多一点、字竖着写在露出来的那一条上，叠着也看得见是什么词。
+ */
+function PackCover() {
   return (
-    <p className="mt-6 text-[13px] text-hai">
-      离 <span className="font-mincho text-sumi">JLPT</span> 还有
-      <span className="mx-1 font-mincho text-2xl text-sumi tabular-nums">{Math.ceil(days / 7)}</span>周 ·
-      <span className="mx-1 font-mincho text-2xl text-sumi tabular-nums">{days}</span>天
-    </p>
+    <Link
+      to={`/library/${PACK.slug}`}
+      className="tint-take group flex flex-col rounded-[18px] border border-[var(--edge)] bg-[var(--tint)] p-6 pb-5 transition hover:shadow-[0_10px_28px_-14px_rgb(0_0_0/0.25)]"
+    >
+      <div className="relative h-[7.5rem]">
+        <span className="inline-block font-mincho text-[5.5rem] leading-none text-[var(--ink)] transition-transform duration-700 group-hover:-translate-y-1 group-hover:-rotate-3">
+          猫
+        </span>
+        <span className="absolute top-1 right-1 h-28 w-36" aria-hidden>
+          {PACK.fan.map((front, i) => (
+            <span
+              key={front}
+              lang="ja"
+              className={`absolute top-0 right-0 h-[5.8rem] w-[4.4rem] origin-[50%_120%] rounded-[9px] border border-[var(--edge)] bg-washi shadow-[0_6px_16px_-10px_rgb(0_0_0/0.35)] transition-transform duration-600 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                [
+                  '-translate-x-[4.3rem] -rotate-12 group-hover:-translate-x-[4.8rem] group-hover:-rotate-16',
+                  '-translate-x-[2.15rem] -rotate-4 group-hover:-translate-x-[2.5rem] group-hover:-rotate-6',
+                  'rotate-5 group-hover:rotate-8',
+                ][i]
+              }`}
+            >
+              <span className="absolute top-2.5 left-2 font-mincho text-[0.95rem] [writing-mode:vertical-rl]">
+                {front}
+              </span>
+            </span>
+          ))}
+        </span>
+      </div>
+
+      <span className="text-[0.7rem] tracking-[0.25em] text-[var(--ink)]">{PACK.level}</span>
+      <span lang="ja" className="mt-1.5 font-mincho text-[1.45rem] tracking-[0.12em]">
+        {PACK.title}
+      </span>
+      <p className="mt-2.5 text-sm leading-relaxed text-sumi/70">{PACK.summary}</p>
+      <div className="mt-4 flex gap-4 text-xs text-sumi/60">
+        <span>
+          <span className="mr-0.5 font-mincho text-lg text-sumi">{PACK.cards}</span>张卡
+        </span>
+        <span>
+          <span className="mr-0.5 font-mincho text-lg text-sumi">{PACK.articles}</span>篇阅读
+        </span>
+      </div>
+      <div className="mt-4 flex items-baseline justify-between border-t border-[var(--edge)] pt-4">
+        <span className="font-mincho text-xl text-[var(--ink)]">{PACK.price}</span>
+        <span className="text-xs text-[var(--ink)]">
+          看看里面{' '}
+          <span className="inline-block transition-transform duration-300 group-hover:translate-x-1">→</span>
+        </span>
+      </div>
+    </Link>
   )
 }
