@@ -1,3 +1,6 @@
+import { KANA_TABLES } from './kana'
+import type { KanaTable } from './kana'
+
 /**
  * 资料随笔的标记。比 Markdown 小得多，只够写一篇讲学习方法的文章：
  *
@@ -10,6 +13,8 @@
  *   ---
  *   「止む」是自动词……
  *   :::
+ *   ::: 五十音 清音      一张五十音表，排成能翻面的卡片；表名是 清音、浊音、拗音，
+ *   :::                  不写就是清音。块里不放内容
  *   正文里写 [^1]，     旁注：宽屏放在正文右边的空白里，窄屏跟在那一段后面
  *   [^1]: 旁注的内容     （定义写在哪儿都行）
  *
@@ -21,6 +26,7 @@ export type EssayBlock =
   | { kind: 'h'; text: string; n: number }
   | { kind: 'quote'; text: string }
   | { kind: 'example'; jp: string; zh: string; note: string }
+  | { kind: 'kana'; table: KanaTable }
 
 export interface Footnote {
   /** 读者看到的编号：按在正文里出现的先后从 1 数 */
@@ -57,11 +63,17 @@ export function parseEssay(body: string): ParsedEssay {
     if (line === '' || FOOTNOTE_DEF.test(line)) continue
 
     if (line.startsWith(':::')) {
+      const label = line.slice(3).trim()
       const inside: string[] = []
       while (i + 1 < lines.length && lines[i + 1].trim() !== ':::') {
         inside.push(lines[++i].trim())
       }
       i++ // 跳过收尾的 :::
+      if (label.startsWith('五十音')) {
+        const table = label.slice(3).trim()
+        blocks.push({ kind: 'kana', table: KANA_TABLES.find((t) => t === table) ?? '清音' })
+        continue
+      }
       const split = inside.indexOf('---')
       const head = (split < 0 ? inside : inside.slice(0, split)).filter((l) => l !== '')
       const tail = split < 0 ? [] : inside.slice(split + 1).filter((l) => l !== '')

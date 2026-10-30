@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import Furigana from '../components/Furigana'
 import { chineseNumeral, FOOTNOTE_REF, parseEssay } from './essay-markup'
+import KanaCards from './KanaCards'
 
 /**
  * 随笔正文。字号、字体从外面的 CSS 变量 --fs、--body 来（阅读器顶栏能调），
@@ -55,6 +56,8 @@ export default function EssayBody({ body, wideNotes = true }: { body: string; wi
                 )}
               </div>
             )
+          case 'kana':
+            return <KanaCards key={i} table={block.table} />
           case 'p':
             return (
               <div key={i} className="relative">

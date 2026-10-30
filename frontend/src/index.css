@@ -171,3 +171,63 @@ ruby > rt {
     transition: none;
   }
 }
+
+/*
+ * 五十音卡片（library/KanaCards.tsx）：滚到眼前时一张张浮上来，点一下沿竖轴翻面。
+ * 正反两面叠在一起，背面先转 180° 藏到后面。
+ */
+@keyframes kana-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) rotate(-2deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.kana-in {
+  animation: kana-in 0.45s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+.kana-flip {
+  transform-style: preserve-3d;
+  transition: transform 0.55s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.kana-card:hover .kana-flip:not(.kana-flipped) {
+  transform: translateY(-2px);
+}
+.kana-flipped {
+  transform: rotateY(180deg);
+}
+.kana-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.kana-back {
+  transform: rotateY(180deg);
+}
+.kana-card:focus-visible {
+  outline: 2px solid var(--color-ai);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+/* 减少动态效果：不浮、不转，正反面直接换 */
+@media (prefers-reduced-motion: reduce) {
+  .kana-in {
+    animation: none;
+  }
+  .kana-flip {
+    transition: none;
+    transform-style: flat;
+  }
+  .kana-flipped {
+    transform: none;
+  }
+  .kana-back {
+    transform: none;
+    opacity: 0;
+  }
+  .kana-flipped .kana-back {
+    opacity: 1;
+  }
+}
