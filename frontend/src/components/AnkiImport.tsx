@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
-import { buildCards, guessMapping, parseApkg } from '../anki'
-import type { AnkiNoteType, FieldMapping } from '../anki'
-import { importCards } from '../api'
+import { buildCards, guessMapping, parseApkg, soundFields } from '../anki'
+import type { AnkiCard, AnkiPackage, FieldMapping } from '../anki'
+import { importCards, uploadCardAudio } from '../api'
 import Furigana from './Furigana'
-import type { ImportResult } from '../api'
+import type { AudioKind, ImportResult } from '../api'
 
 export default function AnkiImport({
   onImported,
@@ -14,14 +14,20 @@ export default function AnkiImport({
   // 卡片导进哪个包：默认就叫这个 .apkg 的名字，可以改
   const [deckName, setDeckName] = useState('')
   const [parsing, setParsing] = useState(false)
-  const [noteTypes, setNoteTypes] = useState<AnkiNoteType[] | null>(null)
+  const [pkg, setPkg] = useState<AnkiPackage | null>(null)
   const [typeIndex, setTypeIndex] = useState(0)
   const [mapping, setMapping] = useState<FieldMapping | null>(null)
   const [importing, setImporting] = useState(false)
+  // 传录音的进度，null = 没在传
+  const [audioProgress, setAudioProgress] = useState<{ done: number; total: number } | null>(null)
   const [result, setResult] = useState<ImportResult | null>(null)
+  // 录音传完的结果；传到一半失败时 error 里是原因
+  const [audioResult, setAudioResult] = useState<{ stored: number; skipped: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const noteTypes = pkg?.noteTypes ?? null
   const noteType = noteTypes?.[typeIndex] ?? null
+  const sounds = useMemo(() => (noteType ? soundFields(noteType) : []), [noteType])
 
   // 笔记可能上千条，映射一变就全量重算，缓存一下
   const cards = useMemo(
@@ -33,14 +39,16 @@ export default function AnkiImport({
     setParsing(true)
     setError(null)
     setResult(null)
-    setNoteTypes(null)
+    setAudioResult(null)
+    setPkg(null)
     setFileName(file.name)
     try {
-      const types = await parseApkg(file)
+      const parsed = await parseApkg(file)
+      const types = parsed.noteTypes
       if (types.length === 0) {
         throw new Error('包里没有笔记')
       }
-      setNoteTypes(types)
+      setPkg(parsed)
       setTypeIndex(0)
       setMapping(guessMapping(types[0]))
       setDeckName(file.name.replace(/\.(apkg|colpkg)$/i, ''))
@@ -57,6 +65,7 @@ export default function AnkiImport({
     setTypeIndex(index)
     setMapping(guessMapping(noteTypes[index]))
     setResult(null)
+    setAudioResult(null)
   }
 
   function toggleBack(index: number) {
@@ -72,17 +81,39 @@ export default function AnkiImport({
   }
 
   async function handleImport() {
-    if (cards.length === 0) return
+    if (cards.length === 0 || !pkg) return
     setImporting(true)
     setError(null)
+    setAudioResult(null)
     try {
-      const imported = await importCards(cards, deckName.trim() || undefined)
+      const imported = await importCards(
+        cards.map(({ front, back }) => ({ front, back })),
+        deckName.trim() || undefined,
+      )
       setResult(imported)
+
+      // 卡片先建好，再按 id 把录音传上去。已有的卡也在 cardIds 里，重新导入能补上录音
+      const audio = audioItems(cards, imported.cardIds, pkg)
+      if (audio.length > 0) {
+        setAudioProgress({ done: 0, total: audio.length })
+        try {
+          setAudioResult(
+            await uploadCardAudio(audio, (done, total) => setAudioProgress({ done, total })),
+          )
+        } catch (e) {
+          // 卡片已经存下了。这块别关，让人看到录音没传完
+          const reason = e instanceof Error ? e.message : '上传失败'
+          setError(`卡片导好了，录音没传完：${reason}。再导一次同一个牌组会补上`)
+          return
+        }
+      }
+      // 录音也传完了才交出去：卡片页一收到就把这块关掉，传到一半关掉就看不到进度了
       onImported(imported)
     } catch (e) {
       setError(e instanceof Error ? e.message : '导入失败')
     } finally {
       setImporting(false)
+      setAudioProgress(null)
     }
   }
 
@@ -146,6 +177,38 @@ export default function AnkiImport({
             </div>
           </Row>
 
+          {sounds.length > 0 && (
+            <Row label="牌组自带的录音">
+              <div className="space-y-2">
+                {(
+                  [
+                    ['word', '单词', 'wordAudioIndex'],
+                    ['sentence', '例句', 'sentenceAudioIndex'],
+                  ] as const
+                ).map(([kind, label, key]) => (
+                  <div key={kind} className="flex flex-wrap items-center gap-2">
+                    <span className="w-8 text-xs text-hai">{label}</span>
+                    <Chip active={mapping[key] === null} onClick={() => setMapping({ ...mapping, [key]: null })}>
+                      不要
+                    </Chip>
+                    {sounds.map(({ index, count }) => (
+                      <Chip
+                        key={index}
+                        active={mapping[key] === index}
+                        onClick={() => setMapping({ ...mapping, [key]: index })}
+                      >
+                        {noteType.fields[index]}（{count}）
+                      </Chip>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-hai">
+                复习时单词录音在打对读音后自动放，例句录音点喇叭才放
+              </p>
+            </Row>
+          )}
+
           <Row label="选项">
             <div className="flex flex-wrap items-center gap-4 text-sm">
               <label className="flex cursor-pointer items-center gap-2">
@@ -204,6 +267,11 @@ export default function AnkiImport({
                     <div className="ruby-block whitespace-pre-line text-sm text-hai">
                       {card.back ? <Furigana text={card.back} /> : '（背面为空）'}
                     </div>
+                    {(card.wordAudio || card.sentenceAudio) && (
+                      <div className="mt-1 text-xs text-hai/70">
+                        录音：{[card.wordAudio && '单词', card.sentenceAudio && '例句'].filter(Boolean).join(' · ')}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -216,10 +284,14 @@ export default function AnkiImport({
               disabled={cards.length === 0 || importing || deckName.trim() === ''}
               className="rounded-sm bg-ai px-5 py-2.5 text-sm text-washi transition hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-30"
             >
-              {importing ? '导入中…' : `导入 ${cards.length} 张`}
+              {audioProgress
+                ? `传录音 ${audioProgress.done} / ${audioProgress.total}…`
+                : importing
+                  ? '导入中…'
+                  : `导入 ${cards.length} 张`}
             </button>
             <span className="text-xs text-hai">
-              已存在的词会自动跳过，音频和图片不会导入
+              已存在的词会自动跳过（录音照样补上），图片不会导入
             </span>
           </div>
         </div>
@@ -235,10 +307,39 @@ export default function AnkiImport({
               {result.skippedFronts.length > 5 && ' …'}
             </span>
           )}
+          {audioResult && (
+            <span className="text-hai">
+              。录音 {audioResult.stored} 段
+              {audioResult.skipped > 0 && `，${audioResult.skipped} 段包里缺文件或太大，没传`}
+            </span>
+          )}
         </p>
       )}
     </div>
   )
+}
+
+/**
+ * 要传哪些录音：每个正面只取第一次出现的那条笔记的 —— 和后端导入时去重的规则一样。
+ * 文件只记名字，传到那一批时才从包里读出来。
+ */
+function audioItems(cards: AnkiCard[], cardIds: Record<string, number>, pkg: AnkiPackage) {
+  const items: { cardId: number; kind: AudioKind; read: () => Promise<Blob | null> }[] = []
+  const seen = new Set<string>()
+  for (const card of cards) {
+    const cardId = cardIds[card.front]
+    if (cardId === undefined || seen.has(card.front)) continue
+    seen.add(card.front)
+    if (card.wordAudio) {
+      const name = card.wordAudio
+      items.push({ cardId, kind: 'word', read: () => pkg.readMedia(name) })
+    }
+    if (card.sentenceAudio) {
+      const name = card.sentenceAudio
+      items.push({ cardId, kind: 'sentence', read: () => pkg.readMedia(name) })
+    }
+  }
+  return items
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {

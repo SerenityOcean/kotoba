@@ -10,6 +10,9 @@ public record CardResponse(
         String reading,
         /* 这张卡值得考读音、但还没有读音 —— 卡片页据此提示「补读音」 */
         boolean readingMissing,
+        /* 牌组自带的录音：单词读音、例句。没有就不出声 */
+        boolean wordAudio,
+        boolean sentenceAudio,
         Instant dueAt,
         int intervalDays,
         int repetitions,
@@ -26,6 +29,8 @@ public record CardResponse(
                 card.getBack(),
                 card.getReading(),
                 card.getReading() == null && Readings.wanted(card.getFront()),
+                card.hasWordAudio(),
+                card.hasSentenceAudio(),
                 state.getDueAt(),
                 state.getIntervalDays(),
                 state.getRepetitions(),

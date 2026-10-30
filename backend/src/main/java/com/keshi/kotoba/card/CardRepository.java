@@ -9,7 +9,6 @@ import org.springframework.data.domain.Pageable;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 public interface CardRepository extends JpaRepository<Card, Long> {
 
@@ -23,9 +22,7 @@ public interface CardRepository extends JpaRepository<Card, Long> {
     long countByOwnerId(Long ownerId);
 
     /** 重名判断的范围是包，不是用户 —— 同一个词可以在不同包里各存一张。 */
-    @Query("select c.front from Card c where c.deckId = :deckId and c.front in :fronts")
-    Set<String> findExistingFronts(@Param("deckId") Long deckId,
-                                   @Param("fronts") Collection<String> fronts);
+    List<Card> findByDeckIdAndFrontIn(Long deckId, Collection<String> fronts);
 
     @Query("select c.deckId as deckId, count(c) as count from Card c "
             + "where c.ownerId = :ownerId group by c.deckId")

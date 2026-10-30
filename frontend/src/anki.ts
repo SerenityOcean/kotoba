@@ -1,11 +1,12 @@
 /**
- * .apkg（Anki 导出包）解析。全部在浏览器里做：
- * 包里 6MB 的音频不用过网络，服务器也不用扛解压和 SQLite。
+ * .apkg（Anki 导出包）解析。全部在浏览器里做：服务器不用扛解压和 SQLite，
+ * 包里的录音也只挑用得上的传（见 {@link AnkiPackage.readMedia}）。
  *
  * 包的结构：一个 zip，里面有 collection.anki2（SQLite）、media（媒体名映射）
  * 和一堆以数字命名的媒体文件。卡片内容在 SQLite 的 notes 表里。
  */
 
+import type JSZip from 'jszip'
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url'
 
 /** Anki 把一条笔记的各个字段用这个字符拼成一个字符串存。 */
@@ -19,6 +20,13 @@ export interface AnkiNoteType {
   notes: string[][]
 }
 
+export interface AnkiPackage {
+  /** 按笔记数从多到少 */
+  noteTypes: AnkiNoteType[]
+  /** 按 [sound:xxx.mp3] 里的文件名取录音。包里没有、或者不是认得的音频格式，给 null */
+  readMedia: (name: string) => Promise<Blob | null>
+}
+
 export interface FieldMapping {
   frontIndex: number
   /** 背面由多个字段按顺序拼接 */
@@ -26,10 +34,36 @@ export interface FieldMapping {
   /** 汉字注音：true → 諦(あきら)める，false → 諦める */
   keepRuby: boolean
   separator: string
+  /** 单词录音从哪个字段的 [sound:] 取，null = 不要 */
+  wordAudioIndex: number | null
+  /** 例句录音从哪个字段取，null = 不要 */
+  sentenceAudioIndex: number | null
+}
+
+/** 一张要导入的卡。录音是包里的文件名，导入后再按卡片 id 传。 */
+export interface AnkiCard {
+  front: string
+  back: string
+  wordAudio?: string
+  sentenceAudio?: string
+}
+
+/** 认得的录音格式，和后端 CardAudioService.TYPES 对应。 */
+const AUDIO_TYPES: Record<string, string> = {
+  mp3: 'audio/mpeg',
+  ogg: 'audio/ogg',
+  oga: 'audio/ogg',
+  opus: 'audio/ogg',
+  m4a: 'audio/mp4',
+  mp4: 'audio/mp4',
+  aac: 'audio/aac',
+  wav: 'audio/wav',
+  webm: 'audio/webm',
+  flac: 'audio/flac',
 }
 
 /** 解析一个 .apkg 文件，按笔记类型分组返回。 */
-export async function parseApkg(file: File): Promise<AnkiNoteType[]> {
+export async function parseApkg(file: File): Promise<AnkiPackage> {
   // 两个库都只在这里用到，动态引入，不进主包
   const [{ default: JSZip }, { default: initSqlJs }] = await Promise.all([
     import('jszip'),
@@ -66,7 +100,7 @@ export async function parseApkg(file: File): Promise<AnkiNoteType[]> {
       }
     }
 
-    return [...grouped.entries()]
+    const types = [...grouped.entries()]
       .map(([mid, notes]) => {
         const type = noteTypes.get(mid)
         return {
@@ -77,9 +111,40 @@ export async function parseApkg(file: File): Promise<AnkiNoteType[]> {
         }
       })
       .sort((a, b) => b.notes.length - a.notes.length)
+
+    const media = await readMediaMap(zip)
+    return {
+      noteTypes: types,
+      // 用到才解压：上千段录音一次全解出来太占内存
+      readMedia: async (name) => {
+        const type = AUDIO_TYPES[name.split('.').pop()?.toLowerCase() ?? '']
+        const entry = media.get(name)
+        const stored = entry === undefined ? null : zip.file(entry)
+        if (!type || !stored) return null
+        return new Blob([await stored.async('arraybuffer')], { type })
+      },
+    }
   } finally {
     db.close()
   }
+}
+
+/**
+ * 包里的媒体文件都按数字编号存（0、1、2…），media 这个 JSON 记着编号对应的原名
+ * （{"0": "gakkou.mp3"}）。这里倒过来：原名 → 编号。读不出来就当没有录音。
+ */
+async function readMediaMap(zip: JSZip): Promise<Map<string, string>> {
+  const byName = new Map<string, string>()
+  try {
+    const raw = await zip.file('media')?.async('string')
+    const numbered = JSON.parse(raw ?? '{}') as Record<string, string>
+    for (const [entry, name] of Object.entries(numbered)) {
+      byName.set(name, entry)
+    }
+  } catch {
+    // 不是 JSON（比如新版压缩格式），卡片照导，只是没有录音
+  }
+  return byName
 }
 
 type SqlDatabase = { exec: (sql: string) => { values: unknown[][] }[] }
@@ -160,11 +225,8 @@ export function cleanField(raw: string, keepRuby: boolean): string {
 }
 
 /** 按映射把笔记转成卡片。正面为空的直接丢掉。 */
-export function buildCards(
-  noteType: AnkiNoteType,
-  mapping: FieldMapping,
-): { front: string; back: string }[] {
-  const cards: { front: string; back: string }[] = []
+export function buildCards(noteType: AnkiNoteType, mapping: FieldMapping): AnkiCard[] {
+  const cards: AnkiCard[] = []
 
   for (const note of noteType.notes) {
     const front = cleanField(note[mapping.frontIndex] ?? '', mapping.keepRuby)
@@ -175,11 +237,35 @@ export function buildCards(
       .filter((v) => v !== '')
       .join(mapping.separator)
 
-    cards.push({ front, back })
+    const card: AnkiCard = { front, back }
+    const word = mapping.wordAudioIndex === null ? null : soundOf(note[mapping.wordAudioIndex])
+    const sentence = mapping.sentenceAudioIndex === null ? null : soundOf(note[mapping.sentenceAudioIndex])
+    if (word) card.wordAudio = word
+    if (sentence) card.sentenceAudio = sentence
+    cards.push(card)
   }
 
   return cards
 }
+
+/** 字段里第一个 [sound:xxx.mp3] 的文件名。字段是 HTML，文件名里的 & 存成了 &amp;。 */
+function soundOf(raw: string | undefined): string | null {
+  const match = raw?.match(/\[sound:([^\]]+)\]/)
+  return match ? match[1].trim().replace(/&amp;/g, '&') : null
+}
+
+/** 哪些字段带录音，各有多少条笔记带。选录音字段时只列这些。 */
+export function soundFields(noteType: AnkiNoteType): { index: number; count: number }[] {
+  return noteType.fields
+    .map((_, index) => ({
+      index,
+      count: noteType.notes.filter((note) => note[index]?.includes('[sound:')).length,
+    }))
+    .filter((f) => f.count > 0)
+}
+
+/** 字段名像是例句的：例文、例句、Sentence-Audio、ExampleAudio…… */
+const SENTENCE_FIELD = /例|sentence|example/i
 
 /** 常见的「答案类」字段名，用来猜一个默认映射，省得每次都从头勾。 */
 const BACK_FIELD_NAMES = new Set([
@@ -189,12 +275,22 @@ const BACK_FIELD_NAMES = new Set([
   '例文1ルビ', '例文1中文', '例文', '例句', '例文1', 'example',
 ])
 
-/** 猜一个初始映射：第一个字段当正面，答案类字段拼成背面。 */
+/**
+ * 猜一个初始映射：第一个字段当正面，答案类字段拼成背面。
+ * 录音：名字像例句的字段算例句，其余带录音的第一个算单词；
+ * 名字看不出来、又正好有两个，前一个算单词、后一个算例句。
+ */
 export function guessMapping(noteType: AnkiNoteType): FieldMapping {
   const backIndexes = noteType.fields
     .map((name, i) => ({ name: name.trim().toLowerCase(), i }))
     .filter(({ name }) => BACK_FIELD_NAMES.has(name))
     .map(({ i }) => i)
+
+  const sounds = soundFields(noteType).map((f) => f.index)
+  const sentenceLike = sounds.filter((i) => SENTENCE_FIELD.test(noteType.fields[i]))
+  const wordLike = sounds.filter((i) => !sentenceLike.includes(i))
+  const wordAudioIndex = wordLike[0] ?? null
+  const sentenceAudioIndex = sentenceLike[0] ?? wordLike[1] ?? null
 
   return {
     frontIndex: 0,
@@ -202,5 +298,7 @@ export function guessMapping(noteType: AnkiNoteType): FieldMapping {
     keepRuby: true,
     // 背面通常有读音、词性、释义、例句好几段，换行比中点好读
     separator: '\n',
+    wordAudioIndex,
+    sentenceAudioIndex,
   }
 }

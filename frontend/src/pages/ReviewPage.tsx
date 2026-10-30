@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { fetchDecks, fetchDueCards, fetchStats, fillReadingsFor, reviewCard } from '../api'
+import { cardAudioUrl, fetchDecks, fetchDueCards, fetchStats, fillReadingsFor, reviewCard } from '../api'
 import { useAuth } from '../auth-context'
 import Furigana from '../components/Furigana'
 import type { Card, Rating } from '../api'
@@ -8,7 +8,9 @@ import { closestReading, finishKana, isCorrect, markMistakes, romajiToKana } fro
 import { stripFurigana } from '../reading'
 import { loadSoundPreset, playKey, saveSoundPreset, soundFor } from '../sound'
 import type { SoundPreset } from '../sound'
+import { playAudio, preloadAudio, resetAudio } from '../card-audio'
 import SoundPicker from '../components/SoundPicker'
+import SpeakButton from '../components/SpeakButton'
 
 type Mode = 'type' | 'flip'
 
@@ -85,6 +87,9 @@ export default function ReviewPage() {
    * 这张又没有读音时就直接崩了。
    */
   const startCard = useCallback((card: Card | undefined, m: Mode) => {
+    // 上一张的录音还在放就掐掉，不然听着像是这张的。这张的单词录音先下好，答对时立刻能放
+    resetAudio()
+    if (card?.wordAudio) preloadAudio(cardAudioUrl(card.id, 'word'))
     setPhase(typing(m, card) ? 'answer' : 'hidden')
     setTyped('')
     setAttempt('')
@@ -135,6 +140,9 @@ export default function ReviewPage() {
         .catch(() => setDeckName(null))
     }
   }, [deckId, startCard, fillMissing])
+
+  // 放到一半退出复习，别在别的页面上接着放
+  useEffect(() => () => resetAudio(), [])
 
   const current = queue[index]
 
@@ -191,6 +199,8 @@ export default function ReviewPage() {
       if (isCorrect(answer, current.reading)) {
         setTyped(answer)
         setPhase('right')
+        // 打对了放一遍单词录音（牌组自带的才有）。就在回车这一下里放：浏览器只认用户操作当下发起的声音
+        if (current.wordAudio) playAudio(cardAudioUrl(current.id, 'word'))
       } else {
         setAttempt(answer)
         setTyped('')
@@ -330,9 +340,18 @@ export default function ReviewPage() {
           <Furigana text={front} />
         </div>
 
+        {phase === 'revealed' && current.wordAudio && (
+          <p className="mt-4 text-2xl">
+            <SpeakButton src={cardAudioUrl(current.id, 'word')} label="听读音" />
+          </p>
+        )}
+
         {phase === 'right' && (
           <p className="mt-6 font-mincho text-2xl text-ai">
             {typed} <span className="text-base">✓</span>
+            {current.wordAudio && (
+              <SpeakButton src={cardAudioUrl(current.id, 'word')} label="再听一遍" />
+            )}
           </p>
         )}
 
@@ -347,7 +366,12 @@ export default function ReviewPage() {
                 ))}
               </p>
             )}
-            <p className="mt-2 font-mincho text-3xl text-sumi">{current.reading}</p>
+            <p className="mt-2 font-mincho text-3xl text-sumi">
+              {current.reading}
+              {current.wordAudio && (
+                <SpeakButton src={cardAudioUrl(current.id, 'word')} label="听读音" />
+              )}
+            </p>
           </div>
         )}
 
@@ -355,7 +379,14 @@ export default function ReviewPage() {
           <>
             <div className="mx-auto my-8 h-px w-16 bg-usu" />
             <div className="ruby-block whitespace-pre-line text-xl text-hai sm:text-2xl">
-              {current.back ? <Furigana text={current.back} /> : '（无背面）'}
+              {current.back ? (
+                <Back
+                  text={current.back}
+                  sentenceAudio={current.sentenceAudio ? cardAudioUrl(current.id, 'sentence') : null}
+                />
+              ) : (
+                '（无背面）'
+              )}
             </div>
           </>
         )}
@@ -504,6 +535,43 @@ function Finished({
       {note && <p className="mt-4 text-sm text-hai">{note}</p>}
     </div>
   )
+}
+
+/**
+ * 卡片背面。背面是几个字段拼起来的（换行、「 · 」或「｜」隔开）。
+ * 卡片带例句录音的话，喇叭放在第一句日语例句后面，点了才放；认不出哪段是例句就放在最后。
+ */
+function Back({ text, sentenceAudio }: { text: string; sentenceAudio: string | null }) {
+  // 带括号的 split 会把分隔符也留在结果里：偶数位是内容，奇数位是分隔符
+  const parts = text.split(/(\n| · |｜)/)
+  const contents = parts.flatMap((_, i) => (i % 2 === 0 ? [i] : []))
+  const speakerAt =
+    sentenceAudio === null ? -1 : (contents.find((i) => isExample(parts[i])) ?? contents.at(-1))
+  return (
+    <>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          part
+        ) : (
+          <Fragment key={i}>
+            <Furigana text={part} />
+            {i === speakerAt && sentenceAudio && <SpeakButton src={sentenceAudio} label="听例句" />}
+          </Fragment>
+        ),
+      )}
+    </>
+  )
+}
+
+const KANA = /[ぁ-ゖァ-ヺ]/
+
+/**
+ * 背面的这一段是不是日语句子：带假名，而且有句读或者注音。
+ * 只有假名的读音行（がっこう）、「名詞・サ変」这种词性、中文释义和翻译都不算。
+ */
+function isExample(part: string): boolean {
+  const plain = stripFurigana(part)
+  return KANA.test(plain) && (/[。、！？]/.test(plain) || plain !== part)
 }
 
 /**
