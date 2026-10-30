@@ -16,6 +16,9 @@ import ResetPasswordPage from './pages/ResetPasswordPage'
 import VerifyEmailPage from './pages/VerifyEmailPage'
 import AccountPage from './pages/AccountPage'
 import LandingPage from './pages/LandingPage'
+import LibraryPage from './pages/LibraryPage'
+import PackPage from './pages/PackPage'
+import EssayPage, { PackTrialPage } from './pages/EssayPage'
 import ErrorBoundary from './components/ErrorBoundary'
 import { useAuth } from './auth-context'
 import { useGoal } from './goal-context'
@@ -41,9 +44,27 @@ export default function App() {
           </Suspense>
         }
       />
+      {/* 资料里的随笔、试读：沉浸着读，也不要 Kotoba 的页头。谁都能读的随笔没登录也能打开 */}
+      <Route path="/essay/:slug" element={<EssayPage />} />
+      <Route
+        path="/library/:slug/trial"
+        element={
+          <AfterAuth>
+            <RequireAuth>
+              <PackTrialPage />
+            </RequireAuth>
+          </AfterAuth>
+        }
+      />
       <Route path="*" element={<Kotoba />} />
     </Routes>
   )
+}
+
+/** Kotoba 的壳外面没有「加载中」那一道：问清是谁之前先别渲染，免得闪一下登录页 */
+function AfterAuth({ children }: { children: React.ReactNode }) {
+  const { ready } = useAuth()
+  return ready ? children : null
 }
 
 function Kotoba() {
@@ -69,7 +90,10 @@ function Kotoba() {
   // 没登录时的首页是展示页：舞台和下面那排功能要宽一些
   const landing = ready && !user && location.pathname === '/'
 
-  const width = centered ? 'max-w-sm' : wide ? 'max-w-6xl' : landing ? 'max-w-5xl' : 'max-w-3xl'
+  // 资料页的卡片两列排，和展示页一样宽一些
+  const library = /^\/library(?:\/[^/]+)?$/.test(location.pathname)
+
+  const width = centered ? 'max-w-sm' : wide ? 'max-w-6xl' : landing || library ? 'max-w-5xl' : 'max-w-3xl'
 
   return (
     <div className="min-h-screen bg-washi font-ui text-sumi">
@@ -100,6 +124,7 @@ function Kotoba() {
                 <NavItem to="/analyze">拆解</NavItem>
                 <NavItem to="/cards">卡片</NavItem>
                 <NavItem to="/higan">彼岸</NavItem>
+                <NavItem to="/library">资料</NavItem>
                 <UserMenu theme={theme} onToggleTheme={toggle} />
               </nav>
             </div>
@@ -212,6 +237,22 @@ function Kotoba() {
                 element={
                   <RequireAuth>
                     <HiganPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/library"
+                element={
+                  <RequireAuth>
+                    <LibraryPage />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/library/:slug"
+                element={
+                  <RequireAuth>
+                    <PackPage />
                   </RequireAuth>
                 }
               />
