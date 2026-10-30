@@ -37,7 +37,9 @@ public class SecurityConfig {
                 // 从 github.com 过来的跨站导航，Strict 的话 cookie 带不回来，OAuth 的 state 就对不上。
                 // Lax 放行了跨站的顶层 GET，所以 CSRF 令牌要打开：
                 // spa() = 令牌放在 JS 可读的 XSRF-TOKEN cookie 里，前端写请求时抄进 X-XSRF-TOKEN 头。
-                .csrf(csrf -> csrf.spa())
+                .csrf(csrf -> csrf.spa()
+                        // 支付宝的异步通知是它的服务器直接 POST 过来的，没有令牌；是不是它发的靠验签
+                        .ignoringRequestMatchers("/api/pay/alipay/notify"))
                 .addFilterAfter(new CsrfCookieFilter(), CsrfFilter.class)
                 // 认出是谁之后再拦：体验账号只读
                 .addFilterAfter(new DemoGuardFilter(demo), AuthorizationFilter.class)
@@ -52,6 +54,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/auth/features").permitAll()
                         // self 的随笔谁都能读；写还是要登录，是不是主人由 EssayController 再认
                         .requestMatchers(HttpMethod.GET, "/api/self/essays", "/api/self/essays/*").permitAll()
+                        // 资料里谁都能读的随笔没登录也能看；挂在包上的由 LibraryService 再认是否解锁
+                        .requestMatchers(HttpMethod.GET, "/api/library/essays/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/pay/alipay/notify").permitAll()
                         .requestMatchers(GithubOAuthConfig.AUTHORIZATION_BASE_URI + "/**",
                                 GithubOAuthConfig.CALLBACK_BASE_URI + "/**").permitAll()
                         .requestMatchers("/api/**").authenticated()

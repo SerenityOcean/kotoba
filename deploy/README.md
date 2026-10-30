@@ -96,7 +96,8 @@ HSTS、CSP、`X-Frame-Options` 等写在 `deploy/nginx-security-headers.conf`，
       && sudo nginx -t && sudo systemctl reload nginx"
 
 CSP 只放行自己的资源（外加 sql.js 要的 `wasm-unsafe-eval`）。前端要是加了外部字体、
-统计脚本之类，得先改 CSP，不然会被浏览器静默拦掉。
+统计脚本之类，得先改 CSP，不然会被浏览器静默拦掉。资料包付款弹层里的二维码是支付宝的页面，
+放在 iframe 里，所以 `frame-src` 放行了 `*.alipay.com` 和沙箱的 `*.alipaydev.com`。
 
 ## 登录相关
 
@@ -114,6 +115,13 @@ CSP 只放行自己的资源（外加 sql.js 要的 `wasm-unsafe-eval`）。前�
       MAIL_USERNAME=xxx@qq.com
       MAIL_PASSWORD=<SMTP 授权码，不是邮箱登录密码>
       MAIL_FROM=言葉 <xxx@qq.com>
+
+      # 资料包的支付宝收款（不配就不显示「用支付宝解锁」，兑换码照常能用）
+      # 异步通知发到 ${APP_BASE_URL}/api/pay/alipay/notify，nginx 已经把 /api 转给后端
+      ALIPAY_APP_ID=...
+      ALIPAY_PRIVATE_KEY=...             # 应用私钥，PKCS8
+      ALIPAY_PUBLIC_KEY=...              # 支付宝公钥
+      # ALIPAY_GATEWAY=https://openapi-sandbox.dl.alipaydev.com/gateway.do   # 沙箱时才设
 
       # GitHub 登录（不配就不显示按钮）
       GITHUB_CLIENT_ID=...

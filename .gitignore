@@ -4,3 +4,6 @@
 
 # demo/seed.py 生成的演示账号密码
 demo/accounts.*.txt
+
+# 资料包和付费随笔的真内容：仓库是公开的，别提交（library/upload.py 从这里传）
+library/content/

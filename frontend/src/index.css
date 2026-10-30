@@ -92,3 +92,82 @@ ruby > rt {
     animation: none;
   }
 }
+
+/*
+ * 资料包的封面色：一个包一组（底色、墨色、描边），夜里换一组暗的。
+ * 组件里用 bg-[var(--tint)] text-[var(--ink)] border-[var(--edge)]，包换颜色不用改组件。
+ */
+.tint-sakura { --tint: #f5ece8; --ink: #8f4f47; --edge: #ecdcd5; }
+.tint-take { --tint: #eaf0eb; --ink: #3b6650; --edge: #d6e3d9; }
+.tint-ai { --tint: #e9edf4; --ink: #2b4a74; --edge: #d5dded; }
+.tint-kin { --tint: #f5efe1; --ink: #7f621c; --edge: #e8dfc6; }
+:root[data-theme="dark"] .tint-sakura { --tint: #261f1d; --ink: #e0ada1; --edge: #3a2c28; }
+:root[data-theme="dark"] .tint-take { --tint: #1b231e; --ink: #9cc8ad; --edge: #2a3a31; }
+:root[data-theme="dark"] .tint-ai { --tint: #1a1f29; --ink: #a0b8dc; --edge: #2a3446; }
+:root[data-theme="dark"] .tint-kin { --tint: #25211a; --ink: #d9bf7c; --edge: #3a3324; }
+
+/* 资料页：卡片、随笔一张张浮上来 */
+.animate-rise {
+  animation: landing-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* 书架上的资料包：跟着指针微微倾斜（--rx/--ry 由组件写），右上角那叠小卡悬停时散开 */
+.pack-card {
+  transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg));
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.4s;
+}
+.pack-card:hover {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 10px 28px -14px rgb(0 0 0 / 0.25);
+}
+.pack-glyph {
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pack-card:hover .pack-glyph {
+  transform: translateY(-4px) rotate(-3deg);
+}
+.pack-fan > span {
+  transform-origin: 50% 120%;
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.pack-fan > span:nth-child(1) { transform: rotate(-12deg) translateX(-2.4rem); }
+.pack-fan > span:nth-child(2) { transform: rotate(-4deg) translateX(-1.1rem); }
+.pack-fan > span:nth-child(3) { transform: rotate(5deg); }
+.pack-card:hover .pack-fan > span:nth-child(1) { transform: rotate(-20deg) translateX(-3.6rem) translateY(-4px); }
+.pack-card:hover .pack-fan > span:nth-child(2) { transform: rotate(-7deg) translateX(-1.8rem) translateY(-8px); }
+.pack-card:hover .pack-fan > span:nth-child(3) { transform: rotate(9deg) translateX(0.3rem) translateY(-3px); }
+
+/* 资料包详情里的卡片：悬停或点一下翻到背面 */
+.flip-card {
+  perspective: 700px;
+}
+.flip-card > div {
+  transform-style: preserve-3d;
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.flip-card:hover > div,
+.flip-card[data-flipped] > div {
+  transform: rotateY(180deg);
+}
+.flip-card .flip-face {
+  backface-visibility: hidden;
+}
+.flip-card .flip-back {
+  transform: rotateY(180deg);
+}
+
+/* 摘要往下渐渐淡出 */
+.fade-out {
+  mask-image: linear-gradient(#000 45%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise {
+    animation: none;
+  }
+  .pack-card,
+  .pack-glyph,
+  .pack-fan > span,
+  .flip-card > div {
+    transition: none;
+  }
+}

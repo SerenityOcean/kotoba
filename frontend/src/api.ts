@@ -940,3 +940,145 @@ export function parseImportText(text: string): { front: string; back: string }[]
     })
     .filter((card) => card.front !== '')
 }
+// ---- 资料：随笔和资料包 ----------------------------------------------------
+
+/** 资料包封面的颜色，样式在 index.css 的 .tint-* 里 */
+export type PackTint = 'sakura' | 'take' | 'ai' | 'kin'
+
+/** DRAFT 只有主人看得见；SOON 在书架上但还不能买 */
+export type PackStatus = 'DRAFT' | 'SOON' | 'ON_SALE'
+
+export interface LibraryEssayCard {
+  slug: string
+  title: string
+  excerpt: string
+  chars: number
+  minutes: number
+  /** 草稿（只有主人看得到）是 null */
+  publishedAt: string | null
+}
+
+export interface PackCard {
+  slug: string
+  title: string
+  level: string
+  /** 封面上那个大字 */
+  glyph: string
+  tint: PackTint
+  summary: string
+  status: PackStatus
+  /** 分；还在写的包可能没有 */
+  priceCents: number | null
+  note: string | null
+  cardCount: number
+  articleCount: number
+  essayCount: number
+  /** 封面右上角露出来的那几张卡 */
+  fan: string[]
+  owned: boolean
+}
+
+export interface Shelf {
+  essays: LibraryEssayCard[]
+  packs: PackCard[]
+}
+
+export interface PackRef {
+  slug: string
+  title: string
+  tint: PackTint
+}
+
+export interface PackDetail {
+  card: PackCard
+  intro: string
+  deckName: string
+  /** 用户自己那边的这个卡包，导入之后才有；复习页 ?deck= 用它 */
+  deckId: number | null
+  cards: { front: string; reading: string | null; back: string | null }[]
+  /** articleId：解锁导入之后，阅读列表里对应的那篇 */
+  articles: { index: number; title: string; chars: number; peek: string; articleId: number | null }[]
+  essays: { slug: string; title: string; peek: string; minutes: number }[]
+  /** 现在能用支付宝买：在卖、没解锁、后端配了支付宝 */
+  payable: boolean
+  grantedAt: string | null
+  /** 解锁了但还没导入时是 null（付完钱就关了页面） */
+  importedAt: string | null
+}
+
+export interface PackTrial {
+  title: string
+  body: string
+  pack: PackRef
+}
+
+export interface LibraryEssay {
+  slug: string
+  title: string
+  body: string
+  publishedAt: string | null
+  chars: number
+  minutes: number
+  /** 挂在哪个包上；谁都能读的是 null */
+  pack: PackRef | null
+  next: { slug: string; title: string } | null
+}
+
+export interface PackImport {
+  deckId: number | null
+  deckName: string
+  cardsImported: number
+  cardsSkipped: number
+  articlesImported: number
+  articlesSkipped: number
+}
+
+/** qrUrl：电脑上放进 iframe 的二维码；payUrl：整页跳去支付宝 */
+export interface Checkout {
+  orderNo: string
+  qrUrl: string | null
+  payUrl: string
+}
+
+export interface OrderState {
+  status: 'CREATED' | 'PAID'
+  pack: string | null
+}
+
+/** 分 → ¥0.99 */
+export function formatPrice(cents: number): string {
+  return `¥${(cents / 100).toFixed(2)}`
+}
+
+export async function fetchShelf(): Promise<Shelf> {
+  return handle<Shelf>(await apiFetch('/api/library'))
+}
+
+export async function fetchPack(slug: string): Promise<PackDetail> {
+  return handle<PackDetail>(await apiFetch(`/api/library/packs/${encodeURIComponent(slug)}`))
+}
+
+export async function fetchPackTrial(slug: string): Promise<PackTrial> {
+  return handle<PackTrial>(await apiFetch(`/api/library/packs/${encodeURIComponent(slug)}/trial`))
+}
+
+/** 没登录也能调：谁都能读的随笔照样给，包里的回 403 和一句为什么 */
+export async function fetchLibraryEssay(slug: string): Promise<LibraryEssay> {
+  return handle<LibraryEssay>(await apiFetch(`/api/library/essays/${encodeURIComponent(slug)}`), true)
+}
+
+export async function importPack(slug: string): Promise<PackImport> {
+  return handle<PackImport>(await postJson(`/api/library/packs/${encodeURIComponent(slug)}/import`, {}))
+}
+
+export async function redeemCode(code: string): Promise<{ slug: string; title: string }> {
+  return handle(await postJson('/api/library/redeem', { code }))
+}
+
+export async function checkoutPack(slug: string, mobile: boolean): Promise<Checkout> {
+  return handle<Checkout>(await postJson(`/api/library/packs/${encodeURIComponent(slug)}/orders`, { mobile }))
+}
+
+export async function fetchOrder(orderNo: string): Promise<OrderState> {
+  return handle<OrderState>(await apiFetch(`/api/library/orders/${encodeURIComponent(orderNo)}`))
+}

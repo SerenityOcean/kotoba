@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
  * <p>先用卡片自己带的信息 —— 正面的注音、背面开头那串假名，都是人写的，最可信；
  * 没有再查词典（{@link JapaneseReading}）。词典也查不出来就留空，等用户自己填。
  */
-final class Readings {
+public final class Readings {
 
     /** 读音里能出现的字：平假名、片假名、长音、重复符号、中点。 */
     private static final String KANA_CHARS = "ぁ-ゖァ-ヺーゝゞヽヾ・";
@@ -48,8 +48,8 @@ final class Readings {
                 && !plain.matches(".*[\\s。、，,！!？?〜～…].*");
     }
 
-    /** 先看正面的注音，再看背面开头，最后查词典。都不行就是 null。 */
-    static String guess(String front, String back) {
+    /** 先看正面的注音，再看背面开头，最后查词典。都不行就是 null。资料包预览卡片也用它。 */
+    public static String guess(String front, String back) {
         if (!wanted(front)) {
             return null;
         }
