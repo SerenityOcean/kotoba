@@ -42,6 +42,13 @@ public class Card {
     @Column(columnDefinition = "text")
     private String reading;
 
+    /** 有没有自带的单词录音、例句录音。录音本身在 {@link CardAudio}。 */
+    @Column(nullable = false)
+    private boolean wordAudio;
+
+    @Column(nullable = false)
+    private boolean sentenceAudio;
+
     @Column(nullable = false)
     private Instant createdAt;
 
@@ -104,6 +111,22 @@ public class Card {
 
     public String getReading() {
         return reading;
+    }
+
+    /** 存上了一段录音。只由 {@link CardAudioService} 调，和录音表一起改。 */
+    void markAudio(AudioKind kind) {
+        switch (kind) {
+            case WORD -> this.wordAudio = true;
+            case SENTENCE -> this.sentenceAudio = true;
+        }
+    }
+
+    public boolean hasWordAudio() {
+        return wordAudio;
+    }
+
+    public boolean hasSentenceAudio() {
+        return sentenceAudio;
     }
 
     public Instant getCreatedAt() {

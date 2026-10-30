@@ -14,7 +14,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -149,7 +148,9 @@ public class CardService {
         }
 
         // 2. 一次查出这个包里已有哪些
-        Set<String> existing = cardRepository.findExistingFronts(deck.getId(), unique.keySet());
+        Map<String, Long> existing = cardRepository.findByDeckIdAndFrontIn(deck.getId(), unique.keySet())
+                .stream()
+                .collect(Collectors.toMap(Card::getFront, Card::getId));
 
         // 3. 分成要导入的和要跳过的
         List<Card> toSave = new ArrayList<>();
@@ -157,7 +158,7 @@ public class CardService {
 
         for (Map.Entry<String, CreateCardRequest> entry : unique.entrySet()) {
             String front = entry.getKey();
-            if (existing.contains(front)) {
+            if (existing.containsKey(front)) {
                 skipped.add(front);
             } else {
                 String back = entry.getValue().back();
@@ -170,7 +171,11 @@ public class CardService {
                 .map(c -> new UserCardState(userId, c.getId(), now))
                 .toList());
 
-        return new ImportResult(deck.getId(), deck.getName(), saved.size(), skipped.size(), skipped);
+        // 新建的和已有的都回 id：牌组自带的录音接着按 id 往上传，已有的卡重新导入一次也能补上录音
+        Map<String, Long> cardIds = new LinkedHashMap<>(existing);
+        saved.forEach(c -> cardIds.put(c.getFront(), c.getId()));
+
+        return new ImportResult(deck.getId(), deck.getName(), saved.size(), skipped.size(), skipped, cardIds);
     }
 
     /**
@@ -314,7 +319,9 @@ public class CardService {
     public record DeckCounts(long cards, long due) {
     }
 
+    /** @param cardIds 正面 → 卡片 id，这一批里新建的和包里已有的都在 */
     public record ImportResult(Long deckId, String deckName,
-                               int imported, int skipped, List<String> skippedFronts) {
+                               int imported, int skipped, List<String> skippedFronts,
+                               Map<String, Long> cardIds) {
     }
 }

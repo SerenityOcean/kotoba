@@ -9,6 +9,9 @@ export interface Card {
   reading: string | null
   /** 值得考读音、但还没有读音 */
   readingMissing: boolean
+  /** 牌组自带的录音：单词读音、例句。没有就不出声 */
+  wordAudio: boolean
+  sentenceAudio: boolean
   dueAt: string
   intervalDays: number
   repetitions: number
@@ -46,6 +49,8 @@ export interface ImportResult {
   imported: number
   skipped: number
   skippedFronts: string[]
+  /** 正面 → 卡片 id，新建的和包里已有的都在。录音按它往上传 */
+  cardIds: Record<string, number>
 }
 
 export interface Deck {
@@ -305,25 +310,83 @@ export async function importCards(
   }
   if (batch.length > 0) batches.push(batch)
 
-  let total: ImportResult | null = null
+  const results: ImportResult[] = []
   for (const part of batches) {
     const res = await apiFetch('/api/cards/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ cards: part, deckName }),
     })
-    const result = await handle<ImportResult>(res)
-    total = total
-      ? {
-          ...result,
-          imported: total.imported + result.imported,
-          skipped: total.skipped + result.skipped,
-          skippedFronts: [...total.skippedFronts, ...result.skippedFronts],
-        }
-      : result
+    results.push(await handle<ImportResult>(res))
   }
-  if (total === null) throw new Error('没有要导入的卡片')
-  return total
+  if (results.length === 0) throw new Error('没有要导入的卡片')
+  return results.reduce((total, result) => ({
+    ...result,
+    imported: total.imported + result.imported,
+    skipped: total.skipped + result.skipped,
+    skippedFronts: [...total.skippedFronts, ...result.skippedFronts],
+    cardIds: { ...total.cardIds, ...result.cardIds },
+  }))
+}
+
+export type AudioKind = 'word' | 'sentence'
+
+/** 一段录音最大多少，和后端 CardAudioService.MAX_BYTES 一致。 */
+export const MAX_AUDIO_BYTES = 1024 * 1024
+/** 一批录音最多多大、多少段：nginx 一个请求只收 2 MB，Tomcat 最多 50 个 part，各留余量。 */
+const AUDIO_BATCH_BYTES = 1.5 * 1024 * 1024
+const AUDIO_BATCH_FILES = 40
+
+/** 卡片自带的一段录音的地址，复习时直接拿来放。 */
+export function cardAudioUrl(cardId: number, kind: AudioKind): string {
+  return `/api/cards/${cardId}/audio/${kind}`
+}
+
+/**
+ * 把牌组自带的录音传到对应的卡上。用到才读（read），攒够一批发一次 ——
+ * 上千段录音一段一个请求，跨境来回的等待比传的时间还长。
+ *
+ * 读不到的（包里缺文件、不认识的格式）和超过 1 MB 的跳过，不算失败。
+ * 中途哪批失败就停下抛错，前面几批已经存下了；同一个牌组再导一次会补上。
+ */
+export async function uploadCardAudio(
+  items: { cardId: number; kind: AudioKind; read: () => Promise<Blob | null> }[],
+  onProgress: (done: number, total: number) => void,
+): Promise<{ stored: number; skipped: number }> {
+  let stored = 0
+  let skipped = 0
+  let done = 0
+  let batch: { name: string; file: Blob }[] = []
+  let size = 0
+
+  async function flush() {
+    if (batch.length === 0) return
+    const form = new FormData()
+    for (const { name, file } of batch) form.append(name, file, name)
+    const res = await apiFetch('/api/cards/audio', { method: 'POST', body: form })
+    stored += (await handle<{ stored: number }>(res)).stored
+    done += batch.length
+    onProgress(done + skipped, items.length)
+    batch = []
+    size = 0
+  }
+
+  onProgress(0, items.length)
+  for (const item of items) {
+    const file = await item.read()
+    if (!file || file.size === 0 || file.size > MAX_AUDIO_BYTES) {
+      skipped += 1
+      continue
+    }
+    if (batch.length >= AUDIO_BATCH_FILES || size + file.size > AUDIO_BATCH_BYTES) {
+      await flush()
+    }
+    batch.push({ name: `${item.cardId}.${item.kind}`, file })
+    size += file.size
+  }
+  await flush()
+  onProgress(items.length, items.length)
+  return { stored, skipped }
 }
 
 // ---- 包 ------------------------------------------------------------------
