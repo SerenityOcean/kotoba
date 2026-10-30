@@ -1108,8 +1108,9 @@ export interface OrderState {
   pack: string | null
 }
 
-/** 分 → ¥0.99 */
+/** 分 → ¥0.99；0 是免费包 */
 export function formatPrice(cents: number): string {
+  if (cents === 0) return '免费'
   return `¥${(cents / 100).toFixed(2)}`
 }
 

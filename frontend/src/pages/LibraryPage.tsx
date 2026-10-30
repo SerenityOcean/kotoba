@@ -122,7 +122,7 @@ function PackTile({ pack, delay }: { pack: PackCard; delay: number }) {
       {!soon && (
         <div className="mt-4 flex gap-4 text-xs text-sumi/60">
           <Count n={pack.cardCount} unit="张卡" />
-          <Count n={pack.articleCount} unit="篇阅读" />
+          {pack.articleCount > 0 && <Count n={pack.articleCount} unit="篇阅读" />}
           {pack.essayCount > 0 && <Count n={pack.essayCount} unit="篇随笔" />}
         </div>
       )}
@@ -133,7 +133,7 @@ function PackTile({ pack, delay }: { pack: PackCard; delay: number }) {
         ) : pack.owned ? (
           <span className="inline-flex items-center gap-1.5 text-sm text-[var(--ink)]">
             <span className="h-1.5 w-1.5 rounded-full bg-current" />
-            已解锁
+            {pack.priceCents === 0 ? '免费' : '已解锁'}
           </span>
         ) : (
           <span className="font-mincho text-xl text-[var(--ink)]">

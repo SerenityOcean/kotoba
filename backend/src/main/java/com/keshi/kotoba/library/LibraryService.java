@@ -111,7 +111,8 @@ public class LibraryService {
         List<PackCard> cards = packs.findAll().stream()
                 .filter(p -> owner || p.getStatus() != Pack.Status.DRAFT)
                 .sorted(Comparator.comparingInt(Pack::getSort).thenComparing(Pack::getId))
-                .map(p -> packCard(p, essayCounts.getOrDefault(p.getId(), 0L).intValue(), owned.contains(p.getId())))
+                .map(p -> packCard(p, essayCounts.getOrDefault(p.getId(), 0L).intValue(),
+                        p.free() || owned.contains(p.getId())))
                 .toList();
         return new Shelf(free, cards);
     }
@@ -121,6 +122,8 @@ public class LibraryService {
         Pack pack = visiblePack(slug, owner);
         PackContent content = content(pack);
         Optional<Grants.Grant> grant = grants.find(userId, pack.getId());
+        // 免费包谁都算拥有；导入过才有那行记录，所以「导入过没有」照样看 grant
+        boolean owns = grant.isPresent() || pack.free();
 
         List<CardPreview> preview = content.cards().stream()
                 .limit(PREVIEW_CARDS)
@@ -145,14 +148,14 @@ public class LibraryService {
                         EssayText.minutes(EssayText.chars(e.getBody()))))
                 .toList();
 
-        Long deckId = grant.isEmpty() ? null : jdbc.query(
+        Long deckId = !owns ? null : jdbc.query(
                         "SELECT id FROM deck WHERE owner_id = :user AND name = :name",
                         new MapSqlParameterSource().addValue("user", userId).addValue("name", content.deckName()),
                         (rs, row) -> rs.getLong(1))
                 .stream().findFirst().orElse(null);
         boolean payable = grant.isEmpty() && pack.onSale() && alipay.getIfAvailable() != null;
         return new PackDetail(
-                packCard(pack, essayRows.size(), grant.isPresent()),
+                packCard(pack, essayRows.size(), owns),
                 pack.getIntro(), content.deckName(), deckId, preview, rows, essayRows, payable,
                 grant.map(Grants.Grant::grantedAt).orElse(null),
                 grant.map(Grants.Grant::importedAt).orElse(null));
@@ -185,7 +188,7 @@ public class LibraryService {
                     .toList();
         } else {
             pack = packs.findById(essay.getPackId()).orElseThrow();
-            if (!owner && (userId == null || !grants.owns(userId, pack.getId()))) {
+            if (!owner && !pack.free() && (userId == null || !grants.owns(userId, pack.getId()))) {
                 throw new LockedException(userId == null
                         ? "这篇在「" + pack.getTitle() + "」里，登录并解锁之后可以读"
                         : "这篇在「" + pack.getTitle() + "」里，解锁之后可以读");
@@ -211,6 +214,10 @@ public class LibraryService {
     @Transactional
     public ImportSummary importPack(Long userId, String slug, Instant now) {
         Pack pack = packs.findBySlug(slug).orElseThrow(() -> new LibraryNotFoundException("没有这个资料包"));
+        if (pack.free()) {
+            // 免费包导入时补一行记录，「导入过没有」「什么时候导的」和付费包一样记
+            grants.grant(userId, pack.getId(), Grants.Source.GIFT, "free", now);
+        }
         if (!grants.owns(userId, pack.getId())) {
             throw new LockedException("先解锁「" + pack.getTitle() + "」");
         }

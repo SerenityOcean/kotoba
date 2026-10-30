@@ -4,7 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 /** 主人上传一个包：整份覆盖。library/upload.py 从 JSON 文件读出来原样发。 */
@@ -38,7 +38,7 @@ public record PackUpsertRequest(
         @NotNull(message = "要给一个状态")
         Pack.Status status,
 
-        @Positive(message = "价格要大于 0")
+        @PositiveOrZero(message = "价格不能是负数（0 就是免费）")
         Integer priceCents,
 
         @Size(max = 40, message = "备注最长 40 字")

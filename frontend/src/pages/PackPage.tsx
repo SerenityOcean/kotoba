@@ -62,11 +62,11 @@ export default function PackPage() {
         <h1 className="relative mt-2.5 font-mincho text-[2.1rem] leading-snug tracking-[0.2em] sm:text-[2.6rem]">
           {card.title}
         </h1>
-        <p className="relative mt-4 max-w-[30em] text-[0.92rem] leading-[1.95] text-sumi/80">{pack.intro}</p>
+        <p className="relative mt-4 max-w-[30em] text-[0.92rem] leading-[1.95] whitespace-pre-line text-sumi/80">{pack.intro}</p>
 
         <div className="relative mt-7 flex gap-8">
           <Big n={card.cardCount} unit="张卡片" />
-          <Big n={card.articleCount} unit="篇阅读" />
+          {card.articleCount > 0 && <Big n={card.articleCount} unit="篇阅读" />}
           {card.essayCount > 0 && <Big n={card.essayCount} unit="篇随笔" />}
         </div>
 
@@ -168,7 +168,7 @@ function BuyRow({ pack, onStart }: { pack: PackDetail; onStart: (start: SheetSta
     if (!pack.importedAt) {
       return (
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-          <Owned since={pack.grantedAt} />
+          <Owned since={pack.grantedAt} free={card.priceCents === 0} />
           <button onClick={() => onStart({ kind: 'import', source: '已解锁' })} className={PRIMARY}>
             导入到我的账号
           </button>
@@ -178,7 +178,7 @@ function BuyRow({ pack, onStart }: { pack: PackDetail; onStart: (start: SheetSta
     }
     return (
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-        <Owned since={pack.grantedAt} />
+        <Owned since={pack.grantedAt} free={card.priceCents === 0} />
         <Link to={pack.deckId ? `/review?deck=${pack.deckId}` : '/review'} className={PRIMARY}>
           复习这 {card.cardCount} 张
         </Link>
@@ -289,12 +289,13 @@ const PRIMARY =
 const GHOST =
   'inline-flex items-center rounded-[10px] border border-[var(--ink)]/40 px-5 py-2.5 text-sm text-[var(--ink)] transition hover:bg-[var(--ink)]/5'
 
-function Owned({ since }: { since: string | null }) {
+/** 免费包谁都有，不说「已解锁」，也不写哪天解锁的 */
+function Owned({ since, free = false }: { since: string | null; free?: boolean }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-sm text-[var(--ink)]">
       <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      已解锁
-      {since && ` · ${new Date(since).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })}`}
+      {free ? '免费' : '已解锁'}
+      {!free && since && ` · ${new Date(since).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })}`}
     </span>
   )
 }

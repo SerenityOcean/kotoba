@@ -214,6 +214,25 @@ class LibraryIntegrationTest {
         assertThrows(PaymentUnavailableException.class, () -> orders.checkout(reader, slug, false, now));
     }
 
+    @Test
+    @DisplayName("免费包（价格 0）：谁都算拥有，不能下单；包里的随笔没登录也能读，不用解锁就能导入")
+    void freePacks() {
+        String free = upsertPack(Pack.Status.ON_SALE, 0);
+        String essay = upsertEssay(free);
+
+        assertTrue(find(library.shelf(reader, false), free).owned());
+        assertTrue(find(library.shelf(null, false), free).owned());
+        PackDetail detail = library.pack(reader, free, false);
+        assertTrue(detail.card().owned());
+        assertFalse(detail.payable());
+        assertNull(detail.importedAt());
+
+        assertEquals(essay, library.essay(null, essay, false).slug());
+
+        assertEquals(3, library.importPack(reader, free, now).cardsImported());
+        assertNotNull(library.pack(reader, free, false).importedAt());
+    }
+
     // ---- 准备数据 ---------------------------------------------------------
 
     private String upsertPack(Pack.Status status, Integer price) {

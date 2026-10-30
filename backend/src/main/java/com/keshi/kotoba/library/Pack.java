@@ -105,9 +105,14 @@ public class Pack {
         this.updatedAt = now;
     }
 
-    /** 能下单：在卖、标了价。 */
+    /** 能下单：在卖、标了价，而且不是免费的。 */
     public boolean onSale() {
-        return status == Status.ON_SALE && priceCents != null;
+        return status == Status.ON_SALE && priceCents != null && priceCents > 0;
+    }
+
+    /** 免费包：在卖、价格是 0。谁都算拥有，不用下单也不用兑换码。 */
+    public boolean free() {
+        return status == Status.ON_SALE && priceCents != null && priceCents == 0;
     }
 
     public Long getId() {
