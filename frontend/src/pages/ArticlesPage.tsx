@@ -7,12 +7,15 @@ import {
   fetchArticleStats,
   fetchArticles,
   fetchFolders,
+  fileImportedArticles,
+  moveArticles,
 } from '../api'
 import type { ArticleList, ArticleStats, FolderListing } from '../api'
 import ArticleBatchImport from '../components/ArticleBatchImport'
 import ArticleForm from '../components/ArticleForm'
 import FolderBar from '../components/FolderBar'
 import Furigana from '../components/Furigana'
+import MoveBar from '../components/MoveBar'
 import Pagination from '../components/Pagination'
 import { rememberListSearch, stripFurigana } from '../reading'
 
@@ -49,6 +52,9 @@ export default function ArticlesPage() {
   const [adding, setAdding] = useState<'one' | 'batch' | null>(null)
   // 正在确认删除的那篇。删除要点两下：第一下只是问一句
   const [confirming, setConfirming] = useState<number | null>(null)
+  // 多选挪集：null 是没在选，否则是选中的文章 id
+  const [picked, setPicked] = useState<Set<number> | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
     rememberListSearch(location.search)
@@ -106,6 +112,25 @@ export default function ArticlesPage() {
       setParams(pageParams(params, list.totalPages), { replace: true })
     }
   }, [list, page, params, setParams])
+
+  function togglePick(id: number) {
+    setPicked((current) => {
+      const next = new Set(current)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
+  }
+
+  async function handleFileImported() {
+    try {
+      const filed = await fileImportedArticles()
+      setNotice(filed > 0 ? `整理了 ${filed} 篇，按资料包归进了对应的集` : '没有可整理的：没进集的文章都对不上已导入的资料包')
+      setError(null)
+      setVersion((v) => v + 1)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '整理失败')
+    }
+  }
 
   async function handleDelete(id: number) {
     try {
@@ -176,6 +201,23 @@ export default function ArticlesPage() {
             >
               从文件批量导入
             </button>
+            {folders && folders.unfiled > 0 && (
+              <button
+                onClick={handleFileImported}
+                className="text-sm text-hai transition hover:text-sumi"
+                title="把导入过的资料包里的文章，按包归进集里"
+              >
+                按资料包整理
+              </button>
+            )}
+            {list && list.articles.length > 0 && folders && picked === null && (
+              <button
+                onClick={() => setPicked(new Set())}
+                className="text-sm text-hai transition hover:text-sumi"
+              >
+                多选挪集
+              </button>
+            )}
           </div>
         ) : adding === 'batch' ? (
           <ArticleBatchImport
@@ -207,6 +249,7 @@ export default function ArticlesPage() {
           />
         )}
 
+        {notice && <p className="mt-3 text-sm text-hai">{notice}</p>}
         {error && <p className="mt-3 text-sm text-shu">{error}</p>}
       </section>
 
@@ -224,6 +267,28 @@ export default function ArticlesPage() {
         </div>
       )}
 
+      {picked !== null && list && folders && (
+        <MoveBar
+          kind="ARTICLE"
+          listing={folders}
+          count={picked.size}
+          pageSize={list.articles.length}
+          onSelectAll={() => setPicked(new Set(list.articles.map((a) => a.id)))}
+          onMove={async (folderId) => {
+            try {
+              await moveArticles([...picked], folderId)
+              setPicked(null)
+              setNotice(null)
+              setError(null)
+              setVersion((v) => v + 1)
+            } catch (e) {
+              setError(e instanceof Error ? e.message : '挪动失败')
+            }
+          }}
+          onCancel={() => setPicked(null)}
+        />
+      )}
+
       {!list ? (
         <p className="text-sm text-hai">加载中…</p>
       ) : stats?.count === 0 ? (
@@ -237,6 +302,15 @@ export default function ArticlesPage() {
           {list.articles.map((article) => (
             <li key={article.id} className="group border-b border-usu py-4">
               <div className="flex items-baseline gap-3">
+                {picked !== null && (
+                  <input
+                    type="checkbox"
+                    checked={picked.has(article.id)}
+                    onChange={() => togglePick(article.id)}
+                    aria-label={`选中「${stripFurigana(article.title)}」`}
+                    className="shrink-0 accent-ai"
+                  />
+                )}
                 <Link
                   to={`/reading/${article.id}`}
                   className="min-w-0 flex-1 font-mincho text-lg transition hover:text-ai"

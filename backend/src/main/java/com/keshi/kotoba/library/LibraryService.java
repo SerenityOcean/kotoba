@@ -233,6 +233,9 @@ public class LibraryService {
                 ? null
                 : cardService.importCards(userId, content.deckName(), content.cards(), now);
 
+        // 以前导入过、还没进集的同名文章，这回顺手归进来
+        fileUnfiled(userId, content);
+
         Set<String> existing = articleIdsByTitle(userId,
                 content.articles().stream().map(PackContent.Article::title).toList()).keySet();
         int articlesImported = 0;
@@ -304,6 +307,40 @@ public class LibraryService {
                 .filter(e -> packId.equals(e.getPackId()) && (owner || e.published()))
                 .sorted(PACK_ORDER)
                 .toList();
+    }
+
+    /**
+     * 把导入过的包里、标题对得上又还没进集的文章，归进以包名命名的集。
+     * 集出现之前导入的文章就靠这个整理回来；返回归了几篇。
+     */
+    @Transactional
+    public int fileImportedArticles(Long userId) {
+        int filed = 0;
+        for (Long packId : grants.importedPackIds(userId)) {
+            filed += packs.findById(packId).map(p -> fileUnfiled(userId, content(p))).orElse(0);
+        }
+        return filed;
+    }
+
+    private int fileUnfiled(Long userId, PackContent content) {
+        if (content.articles().isEmpty()) {
+            return 0;
+        }
+        List<Long> ids = new ArrayList<>();
+        jdbc.query("""
+                        SELECT id FROM article
+                        WHERE owner_id = :user AND folder_id IS NULL AND title IN (:titles)
+                        """,
+                new MapSqlParameterSource().addValue("user", userId)
+                        .addValue("titles", content.articles().stream().map(PackContent.Article::title).toList()),
+                rs -> {
+                    ids.add(rs.getLong("id"));
+                });
+        if (ids.isEmpty()) {
+            return 0;
+        }
+        Long folderId = folderService.findOrCreate(userId, Folder.Kind.ARTICLE, content.deckName()).getId();
+        return articleService.moveToFolder(userId, ids, folderId);
     }
 
     PackContent content(Pack pack) {

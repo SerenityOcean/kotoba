@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { UNFILED, deleteExam, fetchExams, fetchFolders } from '../api'
+import { UNFILED, deleteExam, fetchExams, fetchFolders, moveExams } from '../api'
 import type { ExamSummary, FolderListing } from '../api'
 import { useAuth } from '../auth-context'
 import ExamImport from '../components/ExamImport'
 import FolderBar from '../components/FolderBar'
+import MoveBar from '../components/MoveBar'
 import { draftKey, readDraft } from '../exam-draft'
 
 /** 「2015年7月」排在「2015年12月」前面：数字按大小比，不按字符 */
@@ -38,6 +39,8 @@ export default function ExamsPage() {
   const [importing, setImporting] = useState(false)
   // 正在确认删除的那份。删除要点两下：第一下只是问一句
   const [confirming, setConfirming] = useState<number | null>(null)
+  // 多选挪集：null 是没在选，否则是选中的卷子 id
+  const [picked, setPicked] = useState<Set<number> | null>(null)
   // 存、删之后加一，列表重新取
   const [version, setVersion] = useState(0)
   const [query, setQuery] = useState('')
@@ -58,6 +61,14 @@ export default function ExamsPage() {
   }, [version])
 
   const titles = useMemo(() => new Set(exams?.map((exam) => exam.title)), [exams])
+
+  function togglePick(id: number) {
+    setPicked((current) => {
+      const next = new Set(current)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
+  }
 
   async function handleDelete(id: number) {
     try {
@@ -143,6 +154,14 @@ export default function ExamsPage() {
             导入真题
           </button>
         )}
+        {!importing && picked === null && exams && exams.length > 0 && folders && (
+          <button
+            onClick={() => setPicked(new Set())}
+            className="ml-4 text-sm text-hai transition hover:text-sumi"
+          >
+            多选挪集
+          </button>
+        )}
 
         {notice && <p className="mt-3 text-sm text-shu">{notice}</p>}
         {error && <p className="mt-3 text-sm text-shu">{error}</p>}
@@ -162,6 +181,27 @@ export default function ExamsPage() {
         </div>
       )}
 
+      {picked !== null && folders && (
+        <MoveBar
+          kind="EXAM"
+          listing={folders}
+          count={picked.size}
+          pageSize={shown.length}
+          onSelectAll={() => setPicked(new Set(shown.map((e) => e.id)))}
+          onMove={async (folderId) => {
+            try {
+              await moveExams([...picked], folderId)
+              setPicked(null)
+              setError(null)
+              setVersion((v) => v + 1)
+            } catch (e) {
+              setError(e instanceof Error ? e.message : '挪动失败')
+            }
+          }}
+          onCancel={() => setPicked(null)}
+        />
+      )}
+
       {!exams ? (
         !error && <p className="text-sm text-hai">加载中…</p>
       ) : exams.length === 0 ? (
@@ -178,6 +218,15 @@ export default function ExamsPage() {
           {shown.map((exam) => (
             <li key={exam.id} className="group border-b border-usu py-4">
               <div className="flex items-baseline gap-3">
+                {picked !== null && (
+                  <input
+                    type="checkbox"
+                    checked={picked.has(exam.id)}
+                    onChange={() => togglePick(exam.id)}
+                    aria-label={`选中「${exam.title}」`}
+                    className="shrink-0 accent-ai"
+                  />
+                )}
                 <Link
                   to={`/exam/${exam.id}`}
                   className="min-w-0 flex-1 font-mincho text-lg transition hover:text-ai"

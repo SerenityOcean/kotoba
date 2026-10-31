@@ -62,6 +62,13 @@ public class Grants {
                 "SELECT pack_id FROM pack_grant WHERE user_id = ?", Long.class, userId));
     }
 
+    /** 导入过的包：整理旧文章时按这些包的标题对。 */
+    public Set<Long> importedPackIds(Long userId) {
+        return new HashSet<>(jdbc.queryForList(
+                "SELECT pack_id FROM pack_grant WHERE user_id = ? AND imported_at IS NOT NULL",
+                Long.class, userId));
+    }
+
     public void markImported(Long userId, Long packId, Instant now) {
         jdbc.update("UPDATE pack_grant SET imported_at = ? WHERE user_id = ? AND pack_id = ?",
                 Timestamp.from(now), userId, packId);

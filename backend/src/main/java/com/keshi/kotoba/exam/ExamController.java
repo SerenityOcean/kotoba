@@ -6,6 +6,8 @@ import com.keshi.kotoba.analyze.AnalyzeLimitException;
 import com.keshi.kotoba.auth.AppUserPrincipal;
 import com.keshi.kotoba.web.ApiError;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -57,6 +59,23 @@ public class ExamController {
                                @Valid @RequestBody ExamRequest request) {
         return examService.create(user.id(), request.title(), request.content(),
                 request.folderId());
+    }
+
+    /** 多选之后一次挪进某个集；folderId 不传是退回未归档。 */
+    @PostMapping("/move")
+    public MoveResult move(@AuthenticationPrincipal AppUserPrincipal user,
+                           @Valid @RequestBody MoveRequest request) {
+        return new MoveResult(examService.moveToFolder(user.id(), request.ids(), request.folderId()));
+    }
+
+    public record MoveRequest(
+            @NotEmpty(message = "没有选中的卷子")
+            @Size(max = 500, message = "一次最多挪 500 份")
+            List<Long> ids,
+            Long folderId) {
+    }
+
+    public record MoveResult(int moved) {
     }
 
     @DeleteMapping("/{id}")

@@ -1175,6 +1175,31 @@ export async function fetchOrder(orderNo: string): Promise<OrderState> {
   return handle<OrderState>(await apiFetch(`/api/library/orders/${encodeURIComponent(orderNo)}`))
 }
 
+/** 多选的文章一次挪进某个集；folderId 为 null 是退回未归档。返回挪了几篇。 */
+export async function moveArticles(ids: number[], folderId: number | null): Promise<number> {
+  const res = await apiFetch('/api/articles/move', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, folderId }),
+  })
+  return (await handle<{ moved: number }>(res)).moved
+}
+
+export async function moveExams(ids: number[], folderId: number | null): Promise<number> {
+  const res = await apiFetch('/api/exams/move', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, folderId }),
+  })
+  return (await handle<{ moved: number }>(res)).moved
+}
+
+/** 集出现之前导入的资料包文章：按包把还没进集的归进集里。返回归了几篇。 */
+export async function fileImportedArticles(): Promise<number> {
+  const res = await apiFetch('/api/library/file-articles', { method: 'POST' })
+  return (await handle<{ filed: number }>(res)).filed
+}
+
 // ---- 集 ------------------------------------------------------------------
 
 /** 阅读里的集装文章，应试里的集装真题，各管各的。 */

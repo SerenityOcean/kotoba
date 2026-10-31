@@ -29,6 +29,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 资料页。除了读随笔（谁都能读的那些没登录也行，SecurityConfig 单独放行了 GET），都要登录。
@@ -75,6 +76,12 @@ public class LibraryController {
     @PostMapping("/packs/{slug}/import")
     public ImportSummary importPack(@AuthenticationPrincipal AppUserPrincipal user, @PathVariable String slug) {
         return library.importPack(user.id(), slug, Instant.now());
+    }
+
+    /** 集出现之前导入的文章：按导入过的包把还没进集的归进集里。 */
+    @PostMapping("/file-articles")
+    public Map<String, Integer> fileArticles(@AuthenticationPrincipal AppUserPrincipal user) {
+        return Map.of("filed", library.fileImportedArticles(user.id()));
     }
 
     public record RedeemRequest(@NotBlank(message = "输入兑换码") String code) {

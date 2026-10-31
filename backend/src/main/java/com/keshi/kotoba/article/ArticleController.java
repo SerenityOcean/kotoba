@@ -3,6 +3,8 @@ package com.keshi.kotoba.article;
 import com.keshi.kotoba.auth.AppUserPrincipal;
 import com.keshi.kotoba.web.ApiError;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Size;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -19,6 +21,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * 读过的文章。正文提交上来时已经注好音了 —— 注音由前端按段落并行调
@@ -75,6 +79,23 @@ public class ArticleController {
                                   @Valid @RequestBody ArticleRequest request) {
         return ArticleResponse.from(articleService.create(
                 user.id(), request.title(), request.body(), request.sourceUrl(), request.folderId()));
+    }
+
+    /** 多选之后一次挪进某个集；folderId 不传是退回未归档。 */
+    @PostMapping("/move")
+    public MoveResult move(@AuthenticationPrincipal AppUserPrincipal user,
+                           @Valid @RequestBody MoveRequest request) {
+        return new MoveResult(articleService.moveToFolder(user.id(), request.ids(), request.folderId()));
+    }
+
+    public record MoveRequest(
+            @NotEmpty(message = "没有选中的文章")
+            @Size(max = 500, message = "一次最多挪 500 篇")
+            List<Long> ids,
+            Long folderId) {
+    }
+
+    public record MoveResult(int moved) {
     }
 
     @PutMapping("/{id}")

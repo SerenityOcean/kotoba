@@ -133,6 +133,21 @@ class FolderServiceIntegrationTest {
         assertNull(unfiled.next());
     }
 
+    @Test
+    @DisplayName("批量挪进集、退回未归档；别人的文章不动")
+    void movesInBulk() {
+        Folder folder = folderService.create(userId, Folder.Kind.ARTICLE, "新闻");
+        long a = articleService.create(userId, "a", "本文", null).getId();
+        long b = articleService.create(userId, "b", "本文", null).getId();
+        long theirs = articleService.create(createUser(), "c", "本文", null).getId();
+
+        assertEquals(2, articleService.moveToFolder(userId, List.of(a, b, theirs), folder.getId()));
+        assertEquals(folder.getId(), articleService.find(userId, a).getFolderId());
+        assertEquals(1, articleService.moveToFolder(userId, List.of(a), null));
+        assertNull(articleService.find(userId, a).getFolderId());
+        assertEquals(1, folderService.list(userId, Folder.Kind.ARTICLE).folders().getFirst().count());
+    }
+
     private Article save(long owner, String title, Long folderId, String at) {
         Article article = articleService.create(owner, title, "本文", null, folderId);
         jdbc.update("UPDATE article SET created_at = ? WHERE id = ?",

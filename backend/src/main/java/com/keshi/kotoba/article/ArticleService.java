@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.List;
 
 @Service
 public class ArticleService {
@@ -137,6 +138,21 @@ public class ArticleService {
         folderService.requireKind(userId, folderId, Folder.Kind.ARTICLE);
         return articleRepository.save(
                 new Article(userId, title, body, sourceUrl, Instant.now(), folderId));
+    }
+
+    /**
+     * 把这些文章挪进某个集；folderId 为空是退回未归档。不是这个人的 id 直接略过，
+     * 返回真正挪了几篇。
+     */
+    @Transactional
+    public int moveToFolder(Long userId, List<Long> ids, Long folderId) {
+        folderService.requireKind(userId, folderId, Folder.Kind.ARTICLE);
+        if (ids.isEmpty()) {
+            return 0;
+        }
+        return jdbc.update("UPDATE article SET folder_id = :folder WHERE owner_id = :userId AND id IN (:ids)",
+                new MapSqlParameterSource().addValue("folder", folderId)
+                        .addValue("userId", userId).addValue("ids", ids));
     }
 
     @Transactional

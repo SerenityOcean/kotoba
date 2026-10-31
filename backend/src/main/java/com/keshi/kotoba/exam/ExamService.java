@@ -139,6 +139,20 @@ public class ExamService {
                 List.of(), Map.of(), Map.of());
     }
 
+    /** 把这些卷子挪进某个集；folderId 为空是退回未归档。返回真正挪了几份。 */
+    @Transactional
+    public int moveToFolder(Long userId, List<Long> ids, Long folderId) {
+        folderService.requireKind(userId, folderId, Folder.Kind.EXAM);
+        int moved = 0;
+        for (Exam exam : examRepository.findAllById(ids)) {
+            if (exam.getOwnerId().equals(userId)) {
+                exam.moveTo(folderId);
+                moved++;
+            }
+        }
+        return moved;
+    }
+
     @Transactional
     public void delete(Long userId, Long id) {
         // 交卷记录由外键 ON DELETE CASCADE 一起删
