@@ -40,14 +40,16 @@ public class ArticleController {
 
     /**
      * 一页摘要。q 按标题筛，不分大小写。folder 不传是全部，传 0 是未归档，传集 id 就只看那个集。
+     * read 传 true 只看读过的，false 只看没读的。
      */
     @GetMapping
     public ArticleListResponse list(@AuthenticationPrincipal AppUserPrincipal user,
                                     @RequestParam(defaultValue = "0") int page,
                                     @RequestParam(defaultValue = "20") int size,
                                     @RequestParam(defaultValue = "") String q,
-                                    @RequestParam(required = false) Long folder) {
-        Page<Article> found = articleService.page(user.id(), folder, q, page, size);
+                                    @RequestParam(required = false) Long folder,
+                                    @RequestParam(required = false) Boolean read) {
+        Page<Article> found = articleService.page(user.id(), folder, read, q, page, size);
         return new ArticleListResponse(
                 found.getContent().stream().map(ArticleSummary::from).toList(),
                 found.getNumber(),
@@ -96,6 +98,21 @@ public class ArticleController {
     }
 
     public record MoveResult(int moved) {
+    }
+
+    /** 标已读 / 未读，多选和打开文章时都走这个。 */
+    @PostMapping("/read")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void markRead(@AuthenticationPrincipal AppUserPrincipal user,
+                         @Valid @RequestBody ReadRequest request) {
+        articleService.markRead(user.id(), request.ids(), request.read());
+    }
+
+    public record ReadRequest(
+            @NotEmpty(message = "没有选中的文章")
+            @Size(max = 500, message = "一次最多标 500 篇")
+            List<Long> ids,
+            boolean read) {
     }
 
     @PutMapping("/{id}")

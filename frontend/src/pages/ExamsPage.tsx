@@ -6,10 +6,34 @@ import { useAuth } from '../auth-context'
 import ExamImport from '../components/ExamImport'
 import FolderBar from '../components/FolderBar'
 import MoveBar from '../components/MoveBar'
+import { Chip } from '../components/chips'
 import { draftKey, readDraft } from '../exam-draft'
 
 /** 「2015年7月」排在「2015年12月」前面：数字按大小比，不按字符 */
 const byTitle = new Intl.Collator('zh-CN', { numeric: true })
+
+type Status = 'todo' | 'done' | 'wrong'
+
+const STATUS_FILTERS: [string, Status | null][] = [
+  ['全部', null],
+  ['未做', 'todo'],
+  ['做过', 'done'],
+  ['有错题', 'wrong'],
+]
+
+/** 有错题：最近一次做完还有没答对的 */
+function matches(exam: ExamSummary, status: Status | null): boolean {
+  switch (status) {
+    case 'todo':
+      return exam.attemptCount === 0
+    case 'done':
+      return exam.attemptCount > 0
+    case 'wrong':
+      return exam.lastAttempt !== null && exam.lastAttempt.correct < exam.lastAttempt.graded
+    default:
+      return true
+  }
+}
 
 /** 列表里难的排前面：最该回头看的是它们 */
 const LEVEL_NAMES: [string, string][] = [
@@ -22,13 +46,15 @@ const LEVEL_NAMES: [string, string][] = [
  * 应试：导进来的真题。排版和阅读列表一个样 —— 一份一行，标题、题数，
  * 下面一行是做到哪儿、标了几道难题，再下面是导入日期。
  * 按标题排：一套真题按年份月份排下来，比按导入时间好找。
- * 选中的集放在地址栏里（`?folder=2`，0 是未归档）。卷子不多，按集筛在前端做。
+ * 选中的集和做题状态放在地址栏里（`?folder=2&status=wrong`，folder 0 是未归档）。卷子不多，按集筛在前端做。
  */
 export default function ExamsPage() {
   const { user } = useAuth()
   const [params, setParams] = useSearchParams()
   const folderParam = params.get('folder')
   const scope = folderParam !== null && /^\d+$/.test(folderParam) ? Number(folderParam) : null
+  const statusParam = params.get('status')
+  const status = STATUS_FILTERS.find(([, value]) => value === statusParam)?.[1] ?? null
   // 选中的是某个真的集：新导入的卷子进它；全部、未归档就不归档
   const targetFolder = scope !== null && scope !== UNFILED ? scope : undefined
   const [exams, setExams] = useState<ExamSummary[] | null>(null)
@@ -86,7 +112,8 @@ export default function ExamsPage() {
     (exam) =>
       scope === null || (scope === UNFILED ? exam.folderId === null : exam.folderId === scope),
   )
-  const shown = inScope?.filter((exam) => exam.title.includes(keyword)) ?? []
+  const shown =
+    inScope?.filter((exam) => matches(exam, status) && exam.title.includes(keyword)) ?? []
   const folderNames = new Map(folders?.folders.map((f) => [f.id, f.name]))
   const latest = inScope?.reduce<string | null>(
     (max, exam) => (max === null || exam.createdAt > max ? exam.createdAt : max),
@@ -102,7 +129,10 @@ export default function ExamsPage() {
           scope={scope}
           onSelect={(next) => {
             setQuery('')
-            setParams(next === null ? {} : { folder: String(next) })
+            setParams({
+              ...(next === null ? {} : { folder: String(next) }),
+              ...(status === null ? {} : { status }),
+            })
           }}
           onChanged={() => setVersion((v) => v + 1)}
           onError={setError}
@@ -167,6 +197,25 @@ export default function ExamsPage() {
         {error && <p className="mt-3 text-sm text-shu">{error}</p>}
       </section>
 
+      {inScope && inScope.length > 0 && (
+        <div className="mb-4 flex gap-5">
+          {STATUS_FILTERS.map(([label, value]) => (
+            <Chip
+              key={label}
+              active={status === value}
+              onClick={() => {
+                const next = new URLSearchParams(params)
+                if (value === null) next.delete('status')
+                else next.set('status', value)
+                setParams(next)
+              }}
+            >
+              {label}
+            </Chip>
+          ))}
+        </div>
+      )}
+
       {inScope && inScope.length > 1 && (
         <div className="mb-2 flex items-baseline gap-4 border-b border-usu pb-1.5 focus-within:border-ai">
           <input
@@ -212,7 +261,9 @@ export default function ExamsPage() {
       ) : inScope?.length === 0 ? (
         <p className="py-10 text-center text-sm text-hai">这个集里还没有卷子。</p>
       ) : shown.length === 0 ? (
-        <p className="py-10 text-center text-sm text-hai">没有标题包含「{keyword}」的卷子。</p>
+        <p className="py-10 text-center text-sm text-hai">
+          {keyword !== '' ? `没有标题包含「${keyword}」的卷子。` : '没有符合的卷子。'}
+        </p>
       ) : (
         <ul>
           {shown.map((exam) => (

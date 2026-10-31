@@ -42,6 +42,9 @@ public class Article {
     /** 所在的集，空就是未归档。 */
     private Long folderId;
 
+    /** 第一次读的时间，空就是没读过。 */
+    private Instant readAt;
+
     protected Article() {
     }
 
@@ -86,6 +89,10 @@ public class Article {
 
     public String getSourceUrl() {
         return sourceUrl;
+    }
+
+    public Instant getReadAt() {
+        return readAt;
     }
 
     public Long getFolderId() {

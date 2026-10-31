@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { ReactNode } from 'react'
 import type { FolderKind, FolderListing } from '../api'
 
 const NOUN: Record<FolderKind, string> = { ARTICLE: '篇', EXAM: '份' }
@@ -15,6 +16,7 @@ export default function MoveBar({
   onSelectAll,
   onMove,
   onCancel,
+  extra,
 }: {
   kind: FolderKind
   listing: FolderListing
@@ -25,6 +27,8 @@ export default function MoveBar({
   /** folderId 为 null 是退回未归档 */
   onMove: (folderId: number | null) => Promise<void>
   onCancel: () => void
+  /** 跟在「挪过去」后面的别的批量操作 */
+  extra?: ReactNode
 }) {
   // '' 是还没选，'none' 是未归档
   const [target, setTarget] = useState('')
@@ -71,6 +75,7 @@ export default function MoveBar({
       >
         挪过去
       </button>
+      {extra}
       <button onClick={onCancel} className="text-xs text-hai transition hover:text-sumi">
         取消
       </button>

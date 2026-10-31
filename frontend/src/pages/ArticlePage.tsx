@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useParams } from 'react-router-dom'
-import { fetchArticle, fetchArticleNeighbors } from '../api'
+import { fetchArticle, fetchArticleNeighbors, markArticlesRead } from '../api'
 import type { Article, ArticleNeighbors } from '../api'
 import Furigana from '../components/Furigana'
 import AnalysisPanel from '../components/AnalysisPanel'
@@ -30,7 +30,11 @@ export default function ArticlePage() {
     window.scrollTo(0, 0)
 
     fetchArticle(Number(id))
-      .then(setArticle)
+      .then((loaded) => {
+        setArticle(loaded)
+        // 打开就算读过；标不上也不碍着看
+        if (!loaded.read) markArticlesRead([loaded.id], true).catch(() => {})
+      })
       .catch((e) => setError(e instanceof Error ? e.message : '加载失败'))
   }, [id, close])
 

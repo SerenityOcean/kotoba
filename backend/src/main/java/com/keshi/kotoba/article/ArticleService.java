@@ -2,8 +2,11 @@ package com.keshi.kotoba.article;
 
 import com.keshi.kotoba.folder.Folder;
 import com.keshi.kotoba.folder.FolderService;
+import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -11,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -52,22 +56,38 @@ public class ArticleService {
         return page(userId, null, keyword, page, size);
     }
 
-    /** 同上，再限定在某个集里：folder 为 null 是全部，{@link #UNFILED} 是未归档。 */
     @Transactional(readOnly = true)
     public Page<Article> page(Long userId, Long folder, String keyword, int page, int size) {
-        PageRequest request = PageRequest.of(Math.max(page, 0), Math.clamp(size, 1, MAX_PAGE_SIZE));
+        return page(userId, folder, null, keyword, page, size);
+    }
+
+    /**
+     * 再限定在某个集里（folder 为 null 是全部，{@link #UNFILED} 是未归档），
+     * 和已读 / 未读（read 为 null 是都要）。
+     */
+    @Transactional(readOnly = true)
+    public Page<Article> page(Long userId, Long folder, Boolean read, String keyword, int page, int size) {
+        PageRequest request = PageRequest.of(Math.max(page, 0), Math.clamp(size, 1, MAX_PAGE_SIZE),
+                Sort.by(Sort.Direction.DESC, "createdAt"));
         String q = keyword == null ? "" : keyword.trim();
-        if (folder == null) {
-            return articleRepository.findByOwnerIdAndTitleContainingIgnoreCaseOrderByCreatedAtDesc(
-                    userId, q, request);
-        }
-        if (folder == UNFILED) {
-            return articleRepository
-                    .findByOwnerIdAndFolderIdIsNullAndTitleContainingIgnoreCaseOrderByCreatedAtDesc(
-                            userId, q, request);
-        }
-        return articleRepository.findByOwnerIdAndFolderIdAndTitleContainingIgnoreCaseOrderByCreatedAtDesc(
-                userId, folder, q, request);
+        Specification<Article> spec = (root, query, cb) -> {
+            List<Predicate> all = new ArrayList<>();
+            all.add(cb.equal(root.get("ownerId"), userId));
+            if (folder != null) {
+                all.add(folder == UNFILED ? cb.isNull(root.get("folderId"))
+                        : cb.equal(root.get("folderId"), folder));
+            }
+            if (read != null) {
+                all.add(read ? cb.isNotNull(root.get("readAt")) : cb.isNull(root.get("readAt")));
+            }
+            if (!q.isEmpty()) {
+                // 搜索词里的 % _ 当字面字符找，不是通配
+                String escaped = q.toLowerCase().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+                all.add(cb.like(cb.lower(root.get("title")), "%" + escaped + "%", '\\'));
+            }
+            return cb.and(all.toArray(Predicate[]::new));
+        };
+        return articleRepository.findAll(spec, request);
     }
 
     @Transactional(readOnly = true)
@@ -153,6 +173,17 @@ public class ArticleService {
         return jdbc.update("UPDATE article SET folder_id = :folder WHERE owner_id = :userId AND id IN (:ids)",
                 new MapSqlParameterSource().addValue("folder", folderId)
                         .addValue("userId", userId).addValue("ids", ids));
+    }
+
+    /** 标成已读（第一次读的时间保留）或未读；不是这个人的 id 略过。 */
+    @Transactional
+    public int markRead(Long userId, List<Long> ids, boolean read) {
+        if (ids.isEmpty()) {
+            return 0;
+        }
+        String set = read ? "read_at = coalesce(read_at, now())" : "read_at = NULL";
+        return jdbc.update("UPDATE article SET " + set + " WHERE owner_id = :userId AND id IN (:ids)",
+                new MapSqlParameterSource().addValue("userId", userId).addValue("ids", ids));
     }
 
     @Transactional

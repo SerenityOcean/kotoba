@@ -8,6 +8,7 @@ import {
   fetchArticles,
   fetchFolders,
   fileImportedArticles,
+  markArticlesRead,
   moveArticles,
 } from '../api'
 import type { ArticleList, ArticleStats, FolderListing } from '../api'
@@ -15,6 +16,7 @@ import ArticleBatchImport from '../components/ArticleBatchImport'
 import ArticleForm from '../components/ArticleForm'
 import FolderBar from '../components/FolderBar'
 import Furigana from '../components/Furigana'
+import { Chip } from '../components/chips'
 import MoveBar from '../components/MoveBar'
 import Pagination from '../components/Pagination'
 import { rememberListSearch, stripFurigana } from '../reading'
@@ -38,6 +40,9 @@ export default function ArticlesPage() {
   const folderParam = params.get('folder')
   const scope = folderParam !== null && /^\d+$/.test(folderParam) ? Number(folderParam) : null
   // 选中的是某个真的集：新存的文章进它；全部、未归档就不归档
+  // read=1 只看读过的，read=0 只看没读的，不写是都要
+  const readParam = params.get('read')
+  const readFilter = readParam === '1' ? true : readParam === '0' ? false : null
   const targetFolder = scope !== null && scope !== UNFILED ? scope : undefined
 
   const [list, setList] = useState<ArticleList | null>(null)
@@ -63,7 +68,7 @@ export default function ArticlesPage() {
   useEffect(() => {
     // 搜索词变得快，先发的请求可能后回来 —— 过时的结果直接扔掉
     let stale = false
-    fetchArticles(page - 1, q, PAGE_SIZE, scope ?? undefined)
+    fetchArticles(page - 1, q, PAGE_SIZE, scope ?? undefined, readFilter ?? undefined)
       .then((result) => {
         if (stale) return
         setList(result)
@@ -75,7 +80,7 @@ export default function ArticlesPage() {
     return () => {
       stale = true
     }
-  }, [page, q, scope, version])
+  }, [page, q, scope, readFilter, version])
 
   useEffect(() => {
     fetchArticleStats(scope ?? undefined)
@@ -100,11 +105,11 @@ export default function ArticlesPage() {
     const keyword = query.trim()
     if (keyword === q) return
     const timer = setTimeout(
-      () => setParams(withScope(scope, keyword === '' ? {} : { q: keyword }), { replace: true }),
+      () => setParams(withScope(scope, readFilter, keyword === '' ? {} : { q: keyword }), { replace: true }),
       SEARCH_DELAY,
     )
     return () => clearTimeout(timer)
-  }, [query, q, scope, setParams])
+  }, [query, q, scope, readFilter, setParams])
 
   // 页码超出了（比如删光了最后一页，或者手改了地址栏）就落到最后一页
   useEffect(() => {
@@ -119,6 +124,16 @@ export default function ArticlesPage() {
       if (!next.delete(id)) next.add(id)
       return next
     })
+  }
+
+  async function setRead(ids: number[], read: boolean) {
+    try {
+      await markArticlesRead(ids, read)
+      setError(null)
+      setVersion((v) => v + 1)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '标记失败')
+    }
   }
 
   async function handleFileImported() {
@@ -153,7 +168,7 @@ export default function ArticlesPage() {
           scope={scope}
           onSelect={(next) => {
             setQuery('')
-            setParams(withScope(next, {}))
+            setParams(withScope(next, readFilter, {}))
           }}
           onChanged={() => setVersion((v) => v + 1)}
           onError={setError}
@@ -227,7 +242,7 @@ export default function ArticlesPage() {
                 plain > 0 ? `导入了 ${count} 篇，但有 ${plain} 段没能注音，那几段是原样存的` : null,
               )
               setQuery('')
-              setParams(withScope(scope, {}))
+              setParams(withScope(scope, readFilter, {}))
               setVersion((v) => v + 1)
             }}
             onCancel={() => setAdding(null)}
@@ -242,7 +257,7 @@ export default function ArticlesPage() {
               setError(plain > 0 ? `存好了，但有 ${plain} 段没能注音，那几段是原样存的` : null)
               // 新存的排在最前面：回第一页、清掉搜索，才看得到它
               setQuery('')
-              setParams(withScope(scope, {}))
+              setParams(withScope(scope, readFilter, {}))
               setVersion((v) => v + 1)
             }}
             onCancel={() => setAdding(null)}
@@ -252,6 +267,23 @@ export default function ArticlesPage() {
         {notice && <p className="mt-3 text-sm text-hai">{notice}</p>}
         {error && <p className="mt-3 text-sm text-shu">{error}</p>}
       </section>
+
+      {stats && stats.count > 0 && (
+        <div className="mb-4 flex gap-5">
+          {([['全部', null], ['未读', false], ['已读', true]] as const).map(([label, value]) => (
+            <Chip
+              key={label}
+              active={readFilter === value}
+              onClick={() => {
+                setQuery('')
+                setParams(withScope(scope, value, {}))
+              }}
+            >
+              {label}
+            </Chip>
+          ))}
+        </div>
+      )}
 
       {stats && stats.count > 1 && (
         <div className="mb-2 flex items-baseline gap-4 border-b border-usu pb-1.5 focus-within:border-ai">
@@ -286,6 +318,22 @@ export default function ArticlesPage() {
             }
           }}
           onCancel={() => setPicked(null)}
+          extra={
+            <>
+              <button
+                onClick={() => picked.size > 0 && setRead([...picked], true).then(() => setPicked(null))}
+                className="text-xs text-hai transition hover:text-ai"
+              >
+                标为已读
+              </button>
+              <button
+                onClick={() => picked.size > 0 && setRead([...picked], false).then(() => setPicked(null))}
+                className="text-xs text-hai transition hover:text-ai"
+              >
+                标为未读
+              </button>
+            </>
+          }
         />
       )}
 
@@ -294,6 +342,10 @@ export default function ArticlesPage() {
       ) : stats?.count === 0 ? (
         <p className="py-10 text-center text-sm text-hai">
           {scope === null ? '还没有文章。把你最近读的那篇存进来。' : '这个集里还没有文章。'}
+        </p>
+      ) : list.articles.length === 0 && readFilter !== null && q === '' ? (
+        <p className="py-10 text-center text-sm text-hai">
+          {readFilter ? '还没有读过的文章。' : '都读过了。'}
         </p>
       ) : list.articles.length === 0 && q !== '' ? (
         <p className="py-10 text-center text-sm text-hai">没有标题包含「{q}」的文章。</p>
@@ -313,7 +365,9 @@ export default function ArticlesPage() {
                 )}
                 <Link
                   to={`/reading/${article.id}`}
-                  className="min-w-0 flex-1 font-mincho text-lg transition hover:text-ai"
+                  className={`min-w-0 flex-1 font-mincho text-lg transition hover:text-ai ${
+                    article.read ? 'text-sumi/55' : ''
+                  }`}
                 >
                   <Furigana text={article.title} />
                 </Link>
@@ -337,6 +391,12 @@ export default function ArticlesPage() {
                   </span>
                 ) : (
                   <span className="flex shrink-0 gap-3 text-xs sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100">
+                    <button
+                      onClick={() => setRead([article.id], !article.read)}
+                      className="text-hai transition hover:text-ai"
+                    >
+                      {article.read ? '标为未读' : '标为已读'}
+                    </button>
                     <Link
                       to={`/reading/${article.id}/edit`}
                       className="text-hai transition hover:text-ai"
@@ -383,9 +443,17 @@ export default function ArticlesPage() {
   )
 }
 
-/** 带上选中的集。全部（null）不写进地址栏。 */
-function withScope(scope: number | null, rest: Record<string, string>): Record<string, string> {
-  return scope === null ? rest : { folder: String(scope), ...rest }
+/** 带上选中的集和已读筛选。全部（null）不写进地址栏。 */
+function withScope(
+  scope: number | null,
+  read: boolean | null,
+  rest: Record<string, string>,
+): Record<string, string> {
+  return {
+    ...(scope === null ? {} : { folder: String(scope) }),
+    ...(read === null ? {} : { read: read ? '1' : '0' }),
+    ...rest,
+  }
 }
 
 /** 换页码、留着搜索词。第 1 页不写进地址栏，`/reading` 就是第一页。 */

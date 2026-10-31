@@ -514,6 +514,8 @@ export interface ArticleSummary {
   sourceUrl: string | null
   /** 所在的集，null 是未归档 */
   folderId: number | null
+  /** 打开读过了 */
+  read: boolean
   createdAt: string
 }
 
@@ -523,6 +525,7 @@ export interface Article {
   body: string
   sourceUrl: string | null
   folderId: number | null
+  read: boolean
   createdAt: string
 }
 
@@ -569,10 +572,12 @@ export async function fetchArticles(
   query = '',
   size = 20,
   folder?: number,
+  read?: boolean,
 ): Promise<ArticleList> {
   const params = new URLSearchParams({ page: String(page), size: String(size) })
   if (query.trim() !== '') params.set('q', query.trim())
   if (folder !== undefined) params.set('folder', String(folder))
+  if (read !== undefined) params.set('read', String(read))
   const res = await apiFetch(`/api/articles?${params}`)
   return handle<ArticleList>(res)
 }
@@ -1173,6 +1178,18 @@ export async function checkoutPack(slug: string, mobile: boolean): Promise<Check
 
 export async function fetchOrder(orderNo: string): Promise<OrderState> {
   return handle<OrderState>(await apiFetch(`/api/library/orders/${encodeURIComponent(orderNo)}`))
+}
+
+/** 标已读 / 未读。打开一篇文章时也走这个。 */
+export async function markArticlesRead(ids: number[], read: boolean): Promise<void> {
+  const res = await apiFetch('/api/articles/read', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, read }),
+  })
+  if (!res.ok) {
+    throw await toError(res, `标记失败：${res.status}`)
+  }
 }
 
 /** 多选的文章一次挪进某个集；folderId 为 null 是退回未归档。返回挪了几篇。 */

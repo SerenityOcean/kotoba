@@ -1,25 +1,12 @@
 package com.keshi.kotoba.article;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import java.time.Instant;
 import java.util.Optional;
 
-public interface ArticleRepository extends JpaRepository<Article, Long> {
-
-    /** 列表：按保存时间倒序翻页，标题里含 keyword 的（空串就是全部）。 */
-    Page<Article> findByOwnerIdAndTitleContainingIgnoreCaseOrderByCreatedAtDesc(
-            Long ownerId, String keyword, Pageable page);
-
-    /** 某个集里的一页。 */
-    Page<Article> findByOwnerIdAndFolderIdAndTitleContainingIgnoreCaseOrderByCreatedAtDesc(
-            Long ownerId, Long folderId, String keyword, Pageable page);
-
-    /** 没进任何集的一页。 */
-    Page<Article> findByOwnerIdAndFolderIdIsNullAndTitleContainingIgnoreCaseOrderByCreatedAtDesc(
-            Long ownerId, String keyword, Pageable page);
+public interface ArticleRepository extends JpaRepository<Article, Long>, JpaSpecificationExecutor<Article> {
 
     Optional<Article> findByIdAndOwnerId(Long id, Long ownerId);
 

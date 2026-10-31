@@ -135,6 +135,38 @@ class ArticleServiceIntegrationTest {
                 () -> articleService.update(other, id, "抢来的", "正文", null));
     }
 
+    @Test
+    @DisplayName("标已读、未读，列表能按它筛；已读保留第一次读的时间")
+    void marksRead() {
+        long one = article(userId, "一", "本文", "2026-09-01T00:00:00Z");
+        long two = article(userId, "二", "本文", "2026-09-02T00:00:00Z");
+        long theirs = article(createUser(), "别人的", "本文", "2026-09-03T00:00:00Z");
+
+        assertEquals(1, articleService.markRead(userId, List.of(one, theirs), true));
+
+        assertEquals(List.of("一"), titles(articleService.page(userId, null, true, "", 0, 10)));
+        assertEquals(List.of("二"), titles(articleService.page(userId, null, false, "", 0, 10)));
+        assertEquals(2, articleService.page(userId, null, null, "", 0, 10).getTotalElements());
+
+        Instant first = articleService.find(userId, one).getReadAt();
+        articleService.markRead(userId, List.of(one), true);
+        assertEquals(first, articleService.find(userId, one).getReadAt());
+
+        articleService.markRead(userId, List.of(one), false);
+        assertNull(articleService.find(userId, one).getReadAt());
+        assertNull(articleService.find(userId, two).getReadAt());
+    }
+
+    @Test
+    @DisplayName("搜索词里的 % 和 _ 当普通字符找")
+    void searchTreatsWildcardsLiterally() {
+        article(userId, "100%の努力", "本文", "2026-09-01T00:00:00Z");
+        article(userId, "100の努力", "本文", "2026-09-02T00:00:00Z");
+
+        assertEquals(List.of("100%の努力"), titles(articleService.page(userId, "0%", 0, 10)));
+        assertEquals(List.of(), titles(articleService.page(userId, "_", 0, 10)));
+    }
+
     private long createUser() {
         String username = "it_" + HexFormat.of().toHexDigits(ThreadLocalRandom.current().nextInt());
         long id = jdbc.queryForObject(

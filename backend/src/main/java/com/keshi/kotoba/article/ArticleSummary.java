@@ -15,6 +15,7 @@ public record ArticleSummary(
         int length,
         String sourceUrl,
         Long folderId,
+        boolean read,
         Instant createdAt
 ) {
 
@@ -31,6 +32,7 @@ public record ArticleSummary(
                 body.length(),
                 article.getSourceUrl(),
                 article.getFolderId(),
+                article.getReadAt() != null,
                 article.getCreatedAt());
     }
 }
