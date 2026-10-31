@@ -17,17 +17,22 @@ final class EssayText {
 
     private static final Pattern FOOTNOTE_REF = Pattern.compile("\\[\\^[^\\]]+]");
     private static final Pattern SPACES = Pattern.compile("\\s+");
+    /** 一行开头的记号：小标题、引文、列表的「- 」和「1. 」 */
+    private static final Pattern LINE_MARK = Pattern.compile("^(?:#{2,3}|>|-(?=\\s)|\\d+\\.(?=\\s))\\s*");
+    private static final Pattern EMPHASIS = Pattern.compile("\\*\\*(.+?)\\*\\*|\\*(.+?)\\*");
 
     private EssayText() {
     }
 
-    /** 读者看得到的字：去掉小标题记号、引文记号、例句块的围栏、旁注的定义和引用、注音。 */
+    /** 读者看得到的字：去掉行首记号、例句块的围栏、图、旁注的定义和引用、粗体斜体的星号、注音。 */
     static String plain(String body) {
         String text = Arrays.stream(body.split("\n"))
                 .map(String::strip)
-                .filter(line -> !line.startsWith(":::") && !line.equals("---") && !line.matches("\\[\\^[^\\]]+]:.*"))
-                .map(line -> line.replaceFirst("^(##|>)\\s*", ""))
+                .filter(line -> !line.startsWith(":::") && !line.equals("---") && !line.startsWith("![")
+                        && !line.matches("\\[\\^[^\\]]+]:.*"))
+                .map(line -> LINE_MARK.matcher(line).replaceFirst(""))
                 .collect(Collectors.joining("\n"));
+        text = EMPHASIS.matcher(text).replaceAll("$1$2");
         return FuriganaNotation.strip(FOOTNOTE_REF.matcher(text).replaceAll(""));
     }
 
@@ -51,7 +56,7 @@ final class EssayText {
                 inExample = !inExample;
                 continue;
             }
-            if (inExample || line.isEmpty() || line.startsWith("##") || line.startsWith(">")
+            if (inExample || line.isEmpty() || line.startsWith("##") || line.startsWith(">") || line.startsWith("![")
                     || line.matches("\\[\\^[^\\]]+]:.*")) {
                 continue;
             }

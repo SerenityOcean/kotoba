@@ -6,7 +6,13 @@ import type { KanaTable } from './kana'
  *
  *   一行就是一段（空行可有可无）。第一段是导语，排得大一点。
  *   ## 小标题           自动编上「一 二 三」
+ *   ### 小小标题        不编号
  *   > 引文               连着几行算一段引文
+ *   - 一条 / 1. 一条     连着几行算一个列表；下一行缩进的，是这一条里的第二段
+ *   ![图说](/图.webp =1400x934 "图注")   单独一行的图；尺寸和图注都可以不写，写了尺寸加载前就先占好位置
+ *   ::: 参考资料         一块书目：一行一条，排得小一号，第二行起缩进
+ *   :::
+ *   **粗体**、*斜体*     段落、列表、引文里都能用
  *   ::: 例               一块例句：第一行日语（方括号注音），第二行起是翻译，
  *   雨[あめ]が止[や]んだら。     「---」下面是讲解
  *   雨停了的话。
@@ -24,7 +30,12 @@ import type { KanaTable } from './kana'
 export type EssayBlock =
   | { kind: 'p'; text: string; lead: boolean; notes: Footnote[] }
   | { kind: 'h'; text: string; n: number }
+  | { kind: 'h3'; text: string }
   | { kind: 'quote'; text: string }
+  /** items：每一条是几段，第一段是这一条本身，后面是缩进写的补充 */
+  | { kind: 'list'; ordered: boolean; items: string[][] }
+  | { kind: 'figure'; src: string; alt: string; caption: string; width?: number; height?: number }
+  | { kind: 'refs'; title: string; items: string[] }
   | { kind: 'example'; jp: string; zh: string; note: string }
   | { kind: 'kana'; table: KanaTable }
 
@@ -36,6 +47,12 @@ export interface Footnote {
 
 const FOOTNOTE_DEF = /^\[\^([^\]]+)\]:\s*(.*)$/
 export const FOOTNOTE_REF = /\[\^([^\]]+)\]/g
+/** 图注里可以有引号：「"」一直取到行尾那个「")」 */
+const FIGURE = /^!\[([^\]]*)\]\((\S+?)(?:\s+=(\d+)x(\d+))?(?:\s+"(.*)")?\)$/
+const BULLET = /^-\s+/
+const NUMBERED = /^\d+\.\s+/
+/** 粗体在前：「**」不能被当成两个空的斜体 */
+export const EMPHASIS = /\*\*(.+?)\*\*|\*(.+?)\*/g
 
 export interface ParsedEssay {
   blocks: EssayBlock[]
@@ -74,6 +91,10 @@ export function parseEssay(body: string): ParsedEssay {
         blocks.push({ kind: 'kana', table: KANA_TABLES.find((t) => t === table) ?? '清音' })
         continue
       }
+      if (label.startsWith('参考')) {
+        blocks.push({ kind: 'refs', title: label, items: inside.filter((l) => l !== '') })
+        continue
+      }
       const split = inside.indexOf('---')
       const head = (split < 0 ? inside : inside.slice(0, split)).filter((l) => l !== '')
       const tail = split < 0 ? [] : inside.slice(split + 1).filter((l) => l !== '')
@@ -81,8 +102,47 @@ export function parseEssay(body: string): ParsedEssay {
       continue
     }
 
+    if (line.startsWith('### ')) {
+      blocks.push({ kind: 'h3', text: line.slice(4).trim() })
+      continue
+    }
+
     if (line.startsWith('## ')) {
       blocks.push({ kind: 'h', text: line.slice(3).trim(), n: ++headings })
+      continue
+    }
+
+    const figure = line.match(FIGURE)
+    if (figure) {
+      blocks.push({
+        kind: 'figure',
+        alt: figure[1],
+        src: figure[2],
+        width: figure[3] ? Number(figure[3]) : undefined,
+        height: figure[4] ? Number(figure[4]) : undefined,
+        caption: figure[5] ?? '',
+      })
+      continue
+    }
+
+    if (BULLET.test(line) || NUMBERED.test(line)) {
+      const ordered = NUMBERED.test(line)
+      const marker = ordered ? NUMBERED : BULLET
+      const items: string[][] = []
+      i--
+      while (i + 1 < lines.length) {
+        const next = lines[i + 1]
+        if (marker.test(next.trim()) && !/^\s/.test(next)) {
+          items.push([next.trim().replace(marker, '')])
+        } else if (items.length > 0 && /^\s+\S/.test(next)) {
+          // 缩进的一行：上一条里的第二段
+          items[items.length - 1].push(next.trim())
+        } else {
+          break
+        }
+        i++
+      }
+      blocks.push({ kind: 'list', ordered, items })
       continue
     }
 

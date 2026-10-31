@@ -7,6 +7,8 @@ import { useAuth } from '../auth-context'
 import AnalysisPanel from '../components/AnalysisPanel'
 import Furigana from '../components/Furigana'
 import EssayBody from '../library/EssayBody'
+import { splitTitle } from '../library/essay-title'
+import { POSITION_KEY } from '../library/reading-position'
 import { useSelectionAnalysis } from '../selection'
 import { KOTOBA_THEME_KEY, useThemeState } from '../theme'
 
@@ -133,7 +135,6 @@ export function PackTrialPage() {
 
 const SIZE_KEY = 'kotoba:reader-size'
 const FACE_KEY = 'kotoba:reader-face'
-const POSITION_KEY = 'kotoba:reader-pos:'
 const SIZES = [15, 16, 17, 18, 20, 22] as const
 const DEFAULT_SIZE = 18
 
@@ -195,6 +196,10 @@ function ReaderShell({
   const [away, setAway] = useState(false)
   const [resumeAt, setResumeAt] = useState<number | null>(null)
   const lastY = useRef(0)
+  // 目录：正文里带 id 的大标题（EssayBody 给的），current 是读到的那一节
+  const [sections, setSections] = useState<Section[]>([])
+  const [current, setCurrent] = useState<string | null>(null)
+  const [tocOpen, setTocOpen] = useState(false)
 
   // 页头之外的地方，昼夜要自己挂到 <html> 上（Kotoba 的壳不在了）
   useEffect(() => {
@@ -216,6 +221,9 @@ function ReaderShell({
     setScrolled(false)
     const saved = storageKey ? readNumber(POSITION_KEY + storageKey) : null
     setResumeAt(saved && saved > 0.08 && saved < 0.95 ? saved : null)
+    setSections(readSections())
+    setCurrent(null)
+    setTocOpen(false)
   }, [storageKey])
 
   useEffect(() => {
@@ -230,6 +238,12 @@ function ReaderShell({
         setAway(window.scrollY > lastY.current && window.scrollY > 320)
         lastY.current = window.scrollY
         if (storageKey && window.scrollY > 0) write(POSITION_KEY + storageKey, p.toFixed(3))
+        // 顶栏下面一点的位置已经越过的最后一个大标题，就是正在读的那一节
+        let at: string | null = null
+        for (const heading of document.querySelectorAll<HTMLElement>('article h2[id]')) {
+          if (heading.getBoundingClientRect().top < 140) at = heading.id
+        }
+        setCurrent(at)
       })
     }
     window.addEventListener('scroll', onScroll, { passive: true })
@@ -261,6 +275,15 @@ function ReaderShell({
   const { pending, showPanel, analyze } = selection
   const panelOpen = canAnalyze && showPanel
 
+  // 三节以上才给目录；短文章一眼就看完了
+  const hasToc = sections.length >= 3
+  const reading = sections.find((s) => s.id === current) ?? null
+
+  function jump(id: string) {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setTocOpen(false)
+  }
+
   return (
     <div className="min-h-screen bg-washi font-ui text-sumi">
       <div
@@ -270,18 +293,35 @@ function ReaderShell({
       <header
         className={`fixed inset-x-0 top-0 z-30 flex h-13 items-center justify-between gap-4 border-b bg-washi/90 px-4 backdrop-blur-sm transition-[transform,border-color] duration-300 sm:px-8 ${
           scrolled ? 'border-usu' : 'border-transparent'
-        } ${away && !panelOpen ? '-translate-y-full' : ''}`}
+        } ${away && !panelOpen && !tocOpen ? '-translate-y-full' : ''}`}
       >
         <Link to={back.to} className="shrink-0 text-sm text-hai transition hover:text-sumi">
           {back.label}
         </Link>
-        <p
-          className={`min-w-0 flex-1 truncate text-center font-mincho text-sm transition-opacity duration-300 ${
-            scrolled ? 'opacity-100' : 'opacity-0'
-          }`}
-        >
-          {title}
-        </p>
+        {hasToc ? (
+          // 有目录：中间显示正在读哪一节，点开是目录
+          <button
+            onClick={() => setTocOpen((open) => !open)}
+            aria-expanded={tocOpen}
+            className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 font-mincho text-sm transition-opacity duration-300 ${
+              scrolled || tocOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
+            }`}
+          >
+            {reading && <span className="shrink-0 text-xs text-ai">{reading.n}</span>}
+            <span className="truncate">{reading ? reading.text : title}</span>
+            <span aria-hidden className={`shrink-0 text-[0.6rem] text-hai transition-transform ${tocOpen ? 'rotate-180' : ''}`}>
+              ▼
+            </span>
+          </button>
+        ) : (
+          <p
+            className={`min-w-0 flex-1 truncate text-center font-mincho text-sm transition-opacity duration-300 ${
+              scrolled ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            {title}
+          </p>
+        )}
         <div className="flex shrink-0 items-center gap-1 text-[0.82rem] text-hai">
           <ToolButton label="字小一点" onClick={() => resize(-1)}>
             A−
@@ -305,6 +345,32 @@ function ReaderShell({
         </div>
       </header>
 
+      {/* 点顶栏标题弹出的目录：手机上也能跳，点外面收起来 */}
+      {hasToc && tocOpen && (
+        <>
+          <button aria-label="收起目录" onClick={() => setTocOpen(false)} className="fixed inset-0 z-20 cursor-default" />
+          <nav
+            aria-label="目录"
+            className="fixed inset-x-3 top-14 z-30 mx-auto max-h-[70vh] max-w-md overflow-y-auto rounded-2xl border border-usu bg-washi/95 p-2 shadow-[0_18px_40px_-18px_rgb(0_0_0/0.35)] backdrop-blur-sm"
+          >
+            <TocList sections={sections} current={current} onJump={jump} />
+          </nav>
+        </>
+      )}
+
+      {/* 宽屏：左边空白里一直放着目录，读到哪一节亮哪一节；开头还在看标题时先不出来 */}
+      {hasToc && !panelOpen && (
+        <nav
+          aria-label="目录"
+          className={`fixed top-28 left-8 z-10 hidden w-48 transition-opacity duration-500 min-[1280px]:block ${
+            scrolled ? 'opacity-100' : 'pointer-events-none opacity-0'
+          }`}
+        >
+          <p className="mb-3 pl-3 text-[0.7rem] tracking-[0.4em] text-hai">目录</p>
+          <TocList sections={sections} current={current} onJump={jump} compact />
+        </nav>
+      )}
+
       <div
         className={
           panelOpen
@@ -326,7 +392,7 @@ function ReaderShell({
                 lang={japaneseTitle ? 'ja' : undefined}
                 className="mt-4 font-mincho text-[2.1em] leading-[1.45] tracking-[0.1em]"
               >
-                {japaneseTitle ? <Furigana text={title} /> : title}
+                {japaneseTitle ? <Furigana text={title} /> : <SplitTitle title={title} />}
               </h1>
             )}
             {meta && (
@@ -374,6 +440,67 @@ function ReaderShell({
         </div>
       )}
     </div>
+  )
+}
+
+interface Section {
+  id: string
+  /** 一 二 三 */
+  n: string
+  text: string
+}
+
+/** 从已经渲染出来的正文里收大标题：EssayBody 给每个 h2 编了 id，第一个子元素是编号 */
+function readSections(): Section[] {
+  return [...document.querySelectorAll<HTMLElement>('article h2[id]')].map((heading) => {
+    const n = heading.firstElementChild?.textContent ?? ''
+    return { id: heading.id, n, text: (heading.textContent ?? '').slice(n.length).trim() }
+  })
+}
+
+function TocList({
+  sections,
+  current,
+  onJump,
+  compact = false,
+}: {
+  sections: Section[]
+  current: string | null
+  onJump: (id: string) => void
+  compact?: boolean
+}) {
+  return (
+    <ol className="space-y-0.5">
+      {sections.map((s) => {
+        const on = s.id === current
+        return (
+          <li key={s.id}>
+            <button
+              onClick={() => onJump(s.id)}
+              aria-current={on ? 'location' : undefined}
+              className={`flex w-full items-baseline gap-2.5 rounded-lg border-l-2 text-left transition-colors ${
+                compact ? 'px-3 py-1.5 text-[0.8rem] leading-snug' : 'px-3 py-2.5 text-sm'
+              } ${on ? 'border-ai text-sumi' : 'border-transparent text-hai hover:text-sumi'}`}
+            >
+              <span className={`shrink-0 font-mincho text-xs ${on ? 'text-ai' : ''}`}>{s.n}</span>
+              <span className="font-mincho">{s.text}</span>
+            </button>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+/** 有冒号的长题目：主标题一行，副题小一号另起一行 */
+function SplitTitle({ title }: { title: string }) {
+  const { main, sub } = splitTitle(title)
+  if (!sub) return <>{title}</>
+  return (
+    <>
+      {main}
+      <span className="mt-[0.35em] block text-[0.62em] leading-[1.6] tracking-[0.08em] text-sumi/80">{sub}</span>
+    </>
   )
 }
 

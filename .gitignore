@@ -7,6 +7,8 @@ demo/accounts.*.txt
 
 # 资料包和付费随笔的真内容：仓库是公开的，别提交（library/upload.py 从这里传）
 library/content/
+# 随笔里的配图跟着内容走，也不进公开仓库（有剧照之类别人的图）；前端在本机打包，照样带上
+frontend/public/essay-media/
 
 # 付费资料包（入门牌组和故事），不进公开仓库
 starter-pack/

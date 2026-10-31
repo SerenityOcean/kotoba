@@ -49,6 +49,26 @@ class EssayTextTest {
     }
 
     @Test
+    @DisplayName("小小标题、列表、图、粗体斜体：记号不算字，图整行不算")
+    void richerMarks() {
+        String body = """
+                ### 参考
+                - **读原版。**
+                  《哈利波特》
+                1. *斜体*的一条
+                ![漫画](/essay-media/a.webp "图：一张漫画")
+                """;
+        assertEquals("参考\n读原版。\n《哈利波特》\n斜体的一条", EssayText.plain(body));
+        assertEquals("读原版。", EssayText.excerpt(body, 100));
+    }
+
+    @Test
+    @DisplayName("行中间的减号、数字不是列表")
+    void dashInsideLineStays() {
+        assertEquals("-5 度，2.5 倍", EssayText.plain("-5 度，2.5 倍"));
+    }
+
+    @Test
     @DisplayName("读多久：一分钟 400 字，向上取整，最少一分钟")
     void minutes() {
         assertEquals(1, EssayText.minutes(0));
