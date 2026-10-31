@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { checkoutPack, fetchOrder, fetchPack, formatPrice, importPack, redeemCode } from '../api'
 import type { Checkout, PackDetail, PackImport } from '../api'
 import Furigana from '../components/Furigana'
@@ -40,6 +40,8 @@ export default function PackPage() {
 
   if (error) return <p className="text-sm text-shu">{error}</p>
   if (!pack) return <p className="text-sm text-hai">加载中…</p>
+  // 只有一篇随笔的包没有可导入的东西，直接去读那篇（书架上也是直接链过去的，这里接住直接输网址的）
+  if (pack.card.entry) return <Navigate to={`/essay/${pack.card.entry}`} replace />
 
   const { card } = pack
   const owned = card.owned

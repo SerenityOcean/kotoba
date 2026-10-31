@@ -233,6 +233,22 @@ class LibraryIntegrationTest {
         assertNotNull(library.pack(reader, free, false).importedAt());
     }
 
+    @Test
+    @DisplayName("只有一篇随笔的包（没卡片、没文章）：书架和随笔里都带上那篇的 slug，点开直接进随笔")
+    void essayOnlyPacks() {
+        String only = "it-" + random();
+        packs.add(only);
+        admin.upsertPack(only, new PackUpsertRequest("五十音", "零基础", "あ", "sakura", "一句话", "一段话",
+                Pack.Status.ON_SALE, 0, null, 0, new PackContent("五十音", List.of(), List.of())), now);
+        String essay = upsertEssay(only);
+
+        assertEquals(essay, find(library.shelf(reader, false), only).entry());
+        assertEquals(essay, library.essay(null, essay, false).pack().entry());
+        // 有卡片的包照常进详情页
+        upsertEssay(slug);
+        assertNull(find(library.shelf(reader, false), slug).entry());
+    }
+
     // ---- 准备数据 ---------------------------------------------------------
 
     private String upsertPack(Pack.Status status, Integer price) {

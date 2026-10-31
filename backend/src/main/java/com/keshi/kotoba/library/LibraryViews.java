@@ -22,11 +22,12 @@ public final class LibraryViews {
      *
      * @param fan        封面右上角露出来的那几张卡的正面
      * @param priceCents 分；还在写的包可能没有
+     * @param entry      没卡片、没文章、只有一篇随笔的包：那篇随笔的 slug，点开包直接进随笔；其他包是 null
      */
     public record PackCard(String slug, String title, String level, String glyph, String tint,
                            String summary, Pack.Status status, Integer priceCents, String note,
                            int cardCount, int articleCount, int essayCount, List<String> fan,
-                           boolean owned) {
+                           boolean owned, String entry) {
     }
 
     /**
@@ -57,7 +58,8 @@ public final class LibraryViews {
     public record Trial(String title, String body, PackRef pack) {
     }
 
-    public record PackRef(String slug, String title, String tint) {
+    /** @param entry 见 {@link PackCard}：只有一篇随笔的包，点开直接是那篇 */
+    public record PackRef(String slug, String title, String tint, String entry) {
     }
 
     public record EssayRef(String slug, String title) {

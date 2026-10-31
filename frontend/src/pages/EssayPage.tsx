@@ -30,7 +30,8 @@ export default function EssayPage() {
       .catch((e) => setError(e instanceof Error ? e.message : '加载失败'))
   }, [slug])
 
-  const back = essay?.pack
+  // 只有这一篇随笔的包没有详情页（点开包就是这篇），回资料页
+  const back = essay?.pack && !essay.pack.entry
     ? { to: `/library/${essay.pack.slug}`, label: `← ${essay.pack.title}` }
     : user
       ? { to: '/library', label: '← 资料' }
@@ -60,7 +61,7 @@ export default function EssayPage() {
           {essay.next && (
             <AfterCard to={`/essay/${essay.next.slug}`} label="下一篇" title={essay.next.title} go="接着读" />
           )}
-          {essay.pack ? (
+          {essay.pack && !essay.pack.entry ? (
             <AfterCard
               to={`/library/${essay.pack.slug}`}
               tint={essay.pack.tint}

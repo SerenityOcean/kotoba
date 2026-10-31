@@ -103,15 +103,15 @@ public class LibraryService {
                 .map(LibraryService::essayCard)
                 .toList();
 
-        Map<Long, Long> essayCounts = all.stream()
+        Map<Long, List<LibraryEssay>> packEssays = all.stream()
                 .filter(e -> !e.free() && (owner || e.published()))
-                .collect(Collectors.groupingBy(LibraryEssay::getPackId, Collectors.counting()));
+                .collect(Collectors.groupingBy(LibraryEssay::getPackId));
         Set<Long> owned = grants.ownedPackIds(userId);
 
         List<PackCard> cards = packs.findAll().stream()
                 .filter(p -> owner || p.getStatus() != Pack.Status.DRAFT)
                 .sorted(Comparator.comparingInt(Pack::getSort).thenComparing(Pack::getId))
-                .map(p -> packCard(p, essayCounts.getOrDefault(p.getId(), 0L).intValue(),
+                .map(p -> packCard(p, packEssays.getOrDefault(p.getId(), List.of()),
                         p.free() || owned.contains(p.getId())))
                 .toList();
         return new Shelf(free, cards);
@@ -143,7 +143,8 @@ public class LibraryService {
                     EssayText.excerpt(a.body(), 60), imported.get(a.title())));
         }
 
-        List<EssayRow> essayRows = packEssays(pack.getId(), owner).stream()
+        List<LibraryEssay> visibleEssays = packEssays(pack.getId(), owner);
+        List<EssayRow> essayRows = visibleEssays.stream()
                 .map(e -> new EssayRow(e.getSlug(), e.getTitle(), EssayText.excerpt(e.getBody(), 80),
                         EssayText.minutes(EssayText.chars(e.getBody()))))
                 .toList();
@@ -155,7 +156,7 @@ public class LibraryService {
                 .stream().findFirst().orElse(null);
         boolean payable = grant.isEmpty() && pack.onSale() && alipay.getIfAvailable() != null;
         return new PackDetail(
-                packCard(pack, essayRows.size(), owns),
+                packCard(pack, visibleEssays, owns),
                 pack.getIntro(), content.deckName(), deckId, preview, rows, essayRows, payable,
                 grant.map(Grants.Grant::grantedAt).orElse(null),
                 grant.map(Grants.Grant::importedAt).orElse(null));
@@ -167,7 +168,7 @@ public class LibraryService {
         Pack pack = visiblePack(slug, owner);
         PackContent.Article first = content(pack).articles().stream().findFirst()
                 .orElseThrow(() -> new LibraryNotFoundException("这个包里没有文章"));
-        return new Trial(first.title(), first.body(), packRef(pack));
+        return new Trial(first.title(), first.body(), packRef(pack, owner));
     }
 
     /**
@@ -200,7 +201,7 @@ public class LibraryService {
         LibraryEssay next = at >= 0 && at + 1 < siblings.size() ? siblings.get(at + 1) : null;
         int chars = EssayText.chars(essay.getBody());
         return new EssayView(essay.getSlug(), essay.getTitle(), essay.getBody(), essay.getPublishedAt(),
-                chars, EssayText.minutes(chars), pack == null ? null : packRef(pack),
+                chars, EssayText.minutes(chars), pack == null ? null : packRef(pack, owner),
                 next == null ? null : new EssayRef(next.getSlug(), next.getTitle()));
     }
 
@@ -301,18 +302,29 @@ public class LibraryService {
         return json.readValue(pack.getContent(), PackContent.class);
     }
 
-    private PackCard packCard(Pack p, int essayCount, boolean owned) {
+    private PackCard packCard(Pack p, List<LibraryEssay> essays, boolean owned) {
         List<String> fan = content(p).cards().stream()
                 .limit(FAN_CARDS)
                 .map(c -> FuriganaNotation.strip(c.front()))
                 .toList();
         return new PackCard(p.getSlug(), p.getTitle(), p.getLevel(), p.getGlyph(), p.getTint(),
                 p.getSummary(), p.getStatus(), p.getPriceCents(), p.getNote(), p.getCardCount(),
-                p.getArticleCount(), essayCount, fan, owned);
+                p.getArticleCount(), essays.size(), fan, owned, entry(p, essays));
     }
 
-    private static PackRef packRef(Pack pack) {
-        return new PackRef(pack.getSlug(), pack.getTitle(), pack.getTint());
+    private PackRef packRef(Pack pack, boolean owner) {
+        return new PackRef(pack.getSlug(), pack.getTitle(), pack.getTint(),
+                entry(pack, packEssays(pack.getId(), owner)));
+    }
+
+    /**
+     * 没有卡片、没有文章、只有一篇随笔的包（比如五十音），没有可导入的东西，详情页就多余了：
+     * 返回那篇随笔的 slug，前端点开包直接进随笔。其他包返回 null。
+     */
+    private static String entry(Pack p, List<LibraryEssay> essays) {
+        return p.getCardCount() == 0 && p.getArticleCount() == 0 && essays.size() == 1
+                ? essays.getFirst().getSlug()
+                : null;
     }
 
     private static EssayCard essayCard(LibraryEssay e) {

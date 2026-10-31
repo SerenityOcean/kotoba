@@ -1039,6 +1039,8 @@ export interface PackCard {
   /** 封面右上角露出来的那几张卡 */
   fan: string[]
   owned: boolean
+  /** 只有一篇随笔的包（没卡片、没文章）：那篇随笔的 slug，点开包直接进随笔 */
+  entry: string | null
 }
 
 export interface Shelf {
@@ -1050,6 +1052,8 @@ export interface PackRef {
   slug: string
   title: string
   tint: PackTint
+  /** 见 PackCard.entry */
+  entry: string | null
 }
 
 export interface PackDetail {

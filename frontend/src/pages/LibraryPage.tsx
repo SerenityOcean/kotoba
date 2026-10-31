@@ -121,7 +121,7 @@ function PackTile({ pack, delay }: { pack: PackCard; delay: number }) {
 
       {!soon && (
         <div className="mt-4 flex gap-4 text-xs text-sumi/60">
-          <Count n={pack.cardCount} unit="张卡" />
+          {pack.cardCount > 0 && <Count n={pack.cardCount} unit="张卡" />}
           {pack.articleCount > 0 && <Count n={pack.articleCount} unit="篇阅读" />}
           {pack.essayCount > 0 && <Count n={pack.essayCount} unit="篇随笔" />}
         </div>
@@ -160,7 +160,7 @@ function PackTile({ pack, delay }: { pack: PackCard; delay: number }) {
       ) : (
         <Link
           ref={tilt.ref}
-          to={`/library/${pack.slug}`}
+          to={pack.entry ? `/essay/${pack.entry}` : `/library/${pack.slug}`}
           onPointerMove={tilt.onPointerMove}
           onPointerLeave={tilt.onPointerLeave}
           className={`${shell} group pack-card border border-[var(--edge)] bg-[var(--tint)]`}
