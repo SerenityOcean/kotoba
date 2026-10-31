@@ -4,6 +4,7 @@ import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-r
 import { checkoutPack, fetchOrder, fetchPack, formatPrice, importPack, redeemCode } from '../api'
 import type { Checkout, PackDetail, PackImport } from '../api'
 import Furigana from '../components/Furigana'
+import { CODE_SHOP_LINKS } from '../library/buy-links'
 
 /**
  * 一个资料包：封面、里面有什么（卡片能翻、第一篇文章能试读、随笔看得到题目），和解锁。
@@ -165,6 +166,7 @@ function BuyRow({ pack, onStart }: { pack: PackDetail; onStart: (start: SheetSta
   const [error, setError] = useState<string | null>(null)
   const [redeeming, setRedeeming] = useState(false)
   const [code, setCode] = useState('')
+  const shopLink = CODE_SHOP_LINKS[card.slug]
 
   if (card.owned) {
     if (!pack.importedAt) {
@@ -250,6 +252,11 @@ function BuyRow({ pack, onStart }: { pack: PackDetail; onStart: (start: SheetSta
             用支付宝解锁
           </button>
         )}
+        {shopLink && (
+          <a href={shopLink} target="_blank" rel="noopener noreferrer" className={pack.payable ? 'text-xs text-sumi/55 underline-offset-4 transition hover:text-[var(--ink)] hover:underline' : PRIMARY}>
+            去闲鱼购买兑换码
+          </a>
+        )}
         {!redeeming && (
           <button
             onClick={() => setRedeeming(true)}
@@ -279,7 +286,9 @@ function BuyRow({ pack, onStart }: { pack: PackDetail; onStart: (start: SheetSta
       <p className="mt-3 text-xs text-sumi/55">
         {pack.payable
           ? `付完自动导入：卡片进「${pack.deckName}」包，文章进阅读`
-          : '在线支付还没开通，现在可以用兑换码解锁'}
+          : shopLink
+            ? '在线支付还没开通：去闲鱼拍下，兑换码会自动发给你，回来点「有兑换码？」输入就能解锁'
+            : '在线支付还没开通，现在可以用兑换码解锁'}
       </p>
       {error && <p className="mt-2 text-sm text-shu">{error}</p>}
     </div>
