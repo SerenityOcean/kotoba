@@ -24,9 +24,12 @@ interface Item {
  * 先列出来看一眼、勾掉不要的，再一篇篇注音、存进去。
  */
 export default function ArticleBatchImport({
+  folderId,
   onImported,
   onCancel,
 }: {
+  /** 存进哪个集，不传就是未归档 */
+  folderId?: number
   /** 存进去至少一篇就会调；plain 是所有文章加起来没注上音的段数 */
   onImported: (count: number, plain: number) => void
   onCancel: () => void
@@ -99,7 +102,7 @@ export default function ArticleBatchImport({
         const { text, plain } = await annotateArticle(item.body, null, (done, total) =>
           setCurrent({ title: item.title, done, total }),
         )
-        await createArticle(item.title, text)
+        await createArticle(item.title, text, undefined, folderId)
         saved += 1
         plainTotal += plain
         update(index, { status: 'done', selected: false })

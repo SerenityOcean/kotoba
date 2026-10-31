@@ -512,6 +512,8 @@ export interface ArticleSummary {
   excerpt: string
   length: number
   sourceUrl: string | null
+  /** 所在的集，null 是未归档 */
+  folderId: number | null
   createdAt: string
 }
 
@@ -520,6 +522,7 @@ export interface Article {
   title: string
   body: string
   sourceUrl: string | null
+  folderId: number | null
   createdAt: string
 }
 
@@ -555,15 +558,29 @@ export interface ArticleNeighbors {
   next: ArticleLink | null
 }
 
-export async function fetchArticles(page: number, query = '', size = 20): Promise<ArticleList> {
+/**
+ * folder 不传是全部，{@link UNFILED} 是没进任何集的，其余是那个集的 id。
+ * 和后端 ArticleService.UNFILED 是同一个值。
+ */
+export const UNFILED = 0
+
+export async function fetchArticles(
+  page: number,
+  query = '',
+  size = 20,
+  folder?: number,
+): Promise<ArticleList> {
   const params = new URLSearchParams({ page: String(page), size: String(size) })
   if (query.trim() !== '') params.set('q', query.trim())
+  if (folder !== undefined) params.set('folder', String(folder))
   const res = await apiFetch(`/api/articles?${params}`)
   return handle<ArticleList>(res)
 }
 
-export async function fetchArticleStats(): Promise<ArticleStats> {
-  const res = await apiFetch('/api/articles/stats')
+export async function fetchArticleStats(folder?: number): Promise<ArticleStats> {
+  const res = await apiFetch(
+    folder === undefined ? '/api/articles/stats' : `/api/articles/stats?folder=${folder}`,
+  )
   return handle<ArticleStats>(res)
 }
 
@@ -581,11 +598,12 @@ export async function createArticle(
   title: string,
   body: string,
   sourceUrl?: string,
+  folderId?: number,
 ): Promise<Article> {
   const res = await apiFetch('/api/articles', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, body, sourceUrl }),
+    body: JSON.stringify({ title, body, sourceUrl, folderId }),
   })
   return handle<Article>(res)
 }
@@ -683,6 +701,7 @@ export interface ExamSummary {
   questionCount: number
   gradedCount: number
   createdAt: string
+  folderId: number | null
   attemptCount: number
   /** 最近一次做完记下的成绩，没做完过是 null */
   lastAttempt: ExamAttempt | null
@@ -697,6 +716,7 @@ export interface Exam {
   questionCount: number
   gradedCount: number
   createdAt: string
+  folderId: number | null
   /** 历次交卷，最近的在前 */
   attempts: ExamAttempt[]
   /** 自己标的难度：题号 → 1 简单、2 一般、3 难。没标的题不在里面 */
@@ -730,11 +750,15 @@ export async function fetchExam(id: number): Promise<Exam> {
   return handle<Exam>(await apiFetch(`/api/exams/${id}`))
 }
 
-export async function createExam(title: string, content: ExamContent): Promise<Exam> {
+export async function createExam(
+  title: string,
+  content: ExamContent,
+  folderId?: number,
+): Promise<Exam> {
   const res = await apiFetch('/api/exams', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title, content }),
+    body: JSON.stringify({ title, content, folderId }),
   })
   return handle<Exam>(res)
 }
@@ -1149,4 +1173,54 @@ export async function checkoutPack(slug: string, mobile: boolean): Promise<Check
 
 export async function fetchOrder(orderNo: string): Promise<OrderState> {
   return handle<OrderState>(await apiFetch(`/api/library/orders/${encodeURIComponent(orderNo)}`))
+}
+
+// ---- 集 ------------------------------------------------------------------
+
+/** 阅读里的集装文章，应试里的集装真题，各管各的。 */
+export type FolderKind = 'ARTICLE' | 'EXAM'
+
+export interface Folder {
+  id: number
+  name: string
+  /** 里面有几个 */
+  count: number
+  createdAt: string
+}
+
+/** 一类东西的全部集，连同每个集里有几个；没进任何集的单数一个 unfiled。 */
+export interface FolderListing {
+  folders: Folder[]
+  unfiled: number
+  total: number
+}
+
+export async function fetchFolders(kind: FolderKind): Promise<FolderListing> {
+  return handle<FolderListing>(await apiFetch(`/api/folders?kind=${kind}`))
+}
+
+export async function createFolder(kind: FolderKind, name: string): Promise<Folder> {
+  const res = await apiFetch('/api/folders', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ kind, name }),
+  })
+  return handle<Folder>(res)
+}
+
+export async function renameFolder(id: number, name: string): Promise<Folder> {
+  const res = await apiFetch(`/api/folders/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  })
+  return handle<Folder>(res)
+}
+
+/** 删集不删里面的东西，它们退回未归档。 */
+export async function deleteFolder(id: number): Promise<void> {
+  const res = await apiFetch(`/api/folders/${id}`, { method: 'DELETE' })
+  if (!res.ok) {
+    throw await toError(res, `删除失败：${res.status}`)
+  }
 }

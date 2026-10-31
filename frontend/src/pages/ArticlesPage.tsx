@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useSearchParams } from 'react-router-dom'
-import { createArticle, deleteArticle, fetchArticleStats, fetchArticles } from '../api'
-import type { ArticleList, ArticleStats } from '../api'
+import {
+  UNFILED,
+  createArticle,
+  deleteArticle,
+  fetchArticleStats,
+  fetchArticles,
+  fetchFolders,
+} from '../api'
+import type { ArticleList, ArticleStats, FolderListing } from '../api'
 import ArticleBatchImport from '../components/ArticleBatchImport'
 import ArticleForm from '../components/ArticleForm'
+import FolderBar from '../components/FolderBar'
+import Furigana from '../components/Furigana'
 import Pagination from '../components/Pagination'
-import { rememberListSearch } from '../reading'
+import { rememberListSearch, stripFurigana } from '../reading'
 
 const PAGE_SIZE = 20
 
@@ -13,8 +22,9 @@ const PAGE_SIZE = 20
 const SEARCH_DELAY = 300
 
 /**
- * 读过的文章列表。翻页和搜索都交给后端，页码和搜索词放在地址栏里
- * （`?page=3&q=…`）—— 点进一篇再回来，还停在原来那一页。
+ * 读过的文章列表。翻页和搜索都交给后端，页码、搜索词和选中的集放在地址栏里
+ * （`?folder=2&page=3&q=…`）—— 点进一篇再回来，还停在原来那一页。
+ * folder 不写是全部，0 是没进任何集的。
  */
 export default function ArticlesPage() {
   const location = useLocation()
@@ -22,9 +32,14 @@ export default function ArticlesPage() {
   // 地址栏里的页码从 1 数，人看着顺；后端从 0 数
   const page = Math.max(1, Math.floor(Number(params.get('page'))) || 1)
   const q = params.get('q') ?? ''
+  const folderParam = params.get('folder')
+  const scope = folderParam !== null && /^\d+$/.test(folderParam) ? Number(folderParam) : null
+  // 选中的是某个真的集：新存的文章进它；全部、未归档就不归档
+  const targetFolder = scope !== null && scope !== UNFILED ? scope : undefined
 
   const [list, setList] = useState<ArticleList | null>(null)
   const [stats, setStats] = useState<ArticleStats | null>(null)
+  const [folders, setFolders] = useState<FolderListing | null>(null)
   const [error, setError] = useState<string | null>(null)
   // 存、删之后加一，列表和统计跟着重新取
   const [version, setVersion] = useState(0)
@@ -42,7 +57,7 @@ export default function ArticlesPage() {
   useEffect(() => {
     // 搜索词变得快，先发的请求可能后回来 —— 过时的结果直接扔掉
     let stale = false
-    fetchArticles(page - 1, q, PAGE_SIZE)
+    fetchArticles(page - 1, q, PAGE_SIZE, scope ?? undefined)
       .then((result) => {
         if (stale) return
         setList(result)
@@ -54,11 +69,17 @@ export default function ArticlesPage() {
     return () => {
       stale = true
     }
-  }, [page, q, version])
+  }, [page, q, scope, version])
 
   useEffect(() => {
-    fetchArticleStats()
+    fetchArticleStats(scope ?? undefined)
       .then(setStats)
+      .catch(() => {})
+  }, [scope, version])
+
+  useEffect(() => {
+    fetchFolders('ARTICLE')
+      .then(setFolders)
       .catch(() => {})
   }, [version])
 
@@ -73,11 +94,11 @@ export default function ArticlesPage() {
     const keyword = query.trim()
     if (keyword === q) return
     const timer = setTimeout(
-      () => setParams(keyword === '' ? {} : { q: keyword }, { replace: true }),
+      () => setParams(withScope(scope, keyword === '' ? {} : { q: keyword }), { replace: true }),
       SEARCH_DELAY,
     )
     return () => clearTimeout(timer)
-  }, [query, q, setParams])
+  }, [query, q, scope, setParams])
 
   // 页码超出了（比如删光了最后一页，或者手改了地址栏）就落到最后一页
   useEffect(() => {
@@ -96,8 +117,24 @@ export default function ArticlesPage() {
     }
   }
 
+  const folderNames = new Map(folders?.folders.map((f) => [f.id, f.name]))
+
   return (
     <div>
+      {folders && (folders.total > 0 || folders.folders.length > 0) && (
+        <FolderBar
+          kind="ARTICLE"
+          listing={folders}
+          scope={scope}
+          onSelect={(next) => {
+            setQuery('')
+            setParams(withScope(next, {}))
+          }}
+          onChanged={() => setVersion((v) => v + 1)}
+          onError={setError}
+        />
+      )}
+
       {stats && stats.count > 0 && (
         <section className="mb-8 border-b border-usu pb-6">
           <div className="flex items-end gap-10">
@@ -142,12 +179,13 @@ export default function ArticlesPage() {
           </div>
         ) : adding === 'batch' ? (
           <ArticleBatchImport
+            folderId={targetFolder}
             onImported={(count, plain) => {
               setError(
                 plain > 0 ? `导入了 ${count} 篇，但有 ${plain} 段没能注音，那几段是原样存的` : null,
               )
               setQuery('')
-              setParams({})
+              setParams(withScope(scope, {}))
               setVersion((v) => v + 1)
             }}
             onCancel={() => setAdding(null)}
@@ -157,12 +195,12 @@ export default function ArticlesPage() {
             submitLabel="保存"
             hint="保存时会给全文加上振假名，长文章要等一会儿"
             onSave={async (draft, plain) => {
-              await createArticle(draft.title, draft.body, draft.sourceUrl)
+              await createArticle(draft.title, draft.body, draft.sourceUrl, targetFolder)
               setAdding(null)
               setError(plain > 0 ? `存好了，但有 ${plain} 段没能注音，那几段是原样存的` : null)
               // 新存的排在最前面：回第一页、清掉搜索，才看得到它
               setQuery('')
-              setParams({})
+              setParams(withScope(scope, {}))
               setVersion((v) => v + 1)
             }}
             onCancel={() => setAdding(null)}
@@ -190,7 +228,7 @@ export default function ArticlesPage() {
         <p className="text-sm text-hai">加载中…</p>
       ) : stats?.count === 0 ? (
         <p className="py-10 text-center text-sm text-hai">
-          还没有文章。把你最近读的那篇存进来。
+          {scope === null ? '还没有文章。把你最近读的那篇存进来。' : '这个集里还没有文章。'}
         </p>
       ) : list.articles.length === 0 && q !== '' ? (
         <p className="py-10 text-center text-sm text-hai">没有标题包含「{q}」的文章。</p>
@@ -203,7 +241,7 @@ export default function ArticlesPage() {
                   to={`/reading/${article.id}`}
                   className="min-w-0 flex-1 font-mincho text-lg transition hover:text-ai"
                 >
-                  {article.title}
+                  <Furigana text={article.title} />
                 </Link>
                 <span className="shrink-0 text-xs tabular-nums text-hai">
                   {article.length} 字
@@ -241,12 +279,15 @@ export default function ArticlesPage() {
                 )}
               </div>
               {confirming === article.id ? (
-                <p className="mt-1 text-sm text-shu">删除「{article.title}」？删了就找不回来了。</p>
+                <p className="mt-1 text-sm text-shu">删除「{stripFurigana(article.title)}」？删了就找不回来了。</p>
               ) : (
                 <p className="mt-1 truncate text-sm text-hai">{article.excerpt}</p>
               )}
               <p className="mt-1 text-xs text-hai/70">
                 {new Date(article.createdAt).toLocaleDateString('zh-CN')}
+                {scope === null && article.folderId !== null && folderNames.has(article.folderId) && (
+                  <span className="ml-3">{folderNames.get(article.folderId)}</span>
+                )}
               </p>
             </li>
           ))}
@@ -266,6 +307,11 @@ export default function ArticlesPage() {
       )}
     </div>
   )
+}
+
+/** 带上选中的集。全部（null）不写进地址栏。 */
+function withScope(scope: number | null, rest: Record<string, string>): Record<string, string> {
+  return scope === null ? rest : { folder: String(scope), ...rest }
 }
 
 /** 换页码、留着搜索词。第 1 页不写进地址栏，`/reading` 就是第一页。 */

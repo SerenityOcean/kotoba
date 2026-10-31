@@ -15,6 +15,7 @@ public record ExamResponse(
         int questionCount,
         int gradedCount,
         Instant createdAt,
+        Long folderId,
         List<AttemptResponse> attempts,
         Map<Integer, Integer> marks,
         Map<Integer, QuestionExplanation> explanations

@@ -8,6 +8,7 @@ public record ArticleResponse(
         String title,
         String body,
         String sourceUrl,
+        Long folderId,
         Instant createdAt
 ) {
 
@@ -17,6 +18,7 @@ public record ArticleResponse(
                 article.getTitle(),
                 article.getBody(),
                 article.getSourceUrl(),
+                article.getFolderId(),
                 article.getCreatedAt());
     }
 }

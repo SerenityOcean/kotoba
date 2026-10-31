@@ -103,7 +103,7 @@ export default function ArticlePage() {
               >
                 <span className="block text-xs text-hai">← 上一篇</span>
                 <span className="mt-1 block truncate font-mincho text-base">
-                  {previous.title}
+                  <Furigana text={previous.title} />
                 </span>
               </Link>
             ) : (
@@ -116,7 +116,7 @@ export default function ArticlePage() {
                 className="min-w-0 flex-1 text-right transition hover:text-ai"
               >
                 <span className="block text-xs text-hai">下一篇 →</span>
-                <span className="mt-1 block truncate font-mincho text-base">{next.title}</span>
+                <span className="mt-1 block truncate font-mincho text-base"><Furigana text={next.title} /></span>
               </Link>
             ) : (
               <span className="flex-1" />

@@ -14,6 +14,7 @@ public record ArticleSummary(
         String excerpt,
         int length,
         String sourceUrl,
+        Long folderId,
         Instant createdAt
 ) {
 
@@ -29,6 +30,7 @@ public record ArticleSummary(
                 body.length() <= EXCERPT_LENGTH ? body : body.substring(0, EXCERPT_LENGTH) + "…",
                 body.length(),
                 article.getSourceUrl(),
+                article.getFolderId(),
                 article.getCreatedAt());
     }
 }

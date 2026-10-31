@@ -24,10 +24,13 @@ interface Item {
  */
 export default function ExamImport({
   existingTitles,
+  folderId,
   onImported,
   onCancel,
 }: {
   existingTitles: Set<string>
+  /** 存进哪个集，不传就是未归档 */
+  folderId?: number
   /** 存进去至少一份就会调；plain 是所有卷子加起来没注上音的块数 */
   onImported: (count: number, plain: number) => void
   onCancel: () => void
@@ -103,7 +106,7 @@ export default function ExamImport({
         const { content, plain } = await annotateExam(parsed.content, (done, total) =>
           setCurrent({ title: parsed.title, done, total }),
         )
-        await createExam(parsed.title, content)
+        await createExam(parsed.title, content, folderId)
         saved += 1
         plainTotal += plain
         update(index, { status: 'done', selected: false })

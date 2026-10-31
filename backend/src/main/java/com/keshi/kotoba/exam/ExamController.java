@@ -55,7 +55,8 @@ public class ExamController {
     @ResponseStatus(HttpStatus.CREATED)
     public ExamResponse create(@AuthenticationPrincipal AppUserPrincipal user,
                                @Valid @RequestBody ExamRequest request) {
-        return examService.create(user.id(), request.title(), request.content());
+        return examService.create(user.id(), request.title(), request.content(),
+                request.folderId());
     }
 
     @DeleteMapping("/{id}")

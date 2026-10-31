@@ -15,7 +15,7 @@ class ArticleRequestValidationTest {
     private final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
     private boolean valid(String sourceUrl) {
-        return validator.validate(new ArticleRequest("标题", "正文", sourceUrl)).isEmpty();
+        return validator.validate(new ArticleRequest("标题", "正文", sourceUrl, null)).isEmpty();
     }
 
     @ParameterizedTest

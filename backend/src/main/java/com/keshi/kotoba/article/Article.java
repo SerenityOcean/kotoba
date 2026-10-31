@@ -39,11 +39,20 @@ public class Article {
     @Column(nullable = false)
     private Instant createdAt;
 
+    /** 所在的集，空就是未归档。 */
+    private Long folderId;
+
     protected Article() {
     }
 
     public Article(Long ownerId, String title, String body, String sourceUrl, Instant createdAt) {
+        this(ownerId, title, body, sourceUrl, createdAt, null);
+    }
+
+    public Article(Long ownerId, String title, String body, String sourceUrl, Instant createdAt,
+                   Long folderId) {
         this.ownerId = ownerId;
+        this.folderId = folderId;
         this.createdAt = createdAt;
         revise(title, body, sourceUrl);
     }
@@ -53,6 +62,10 @@ public class Article {
         this.title = title.trim();
         this.body = body;
         this.sourceUrl = sourceUrl == null || sourceUrl.isBlank() ? null : sourceUrl.trim();
+    }
+
+    public void moveTo(Long folderId) {
+        this.folderId = folderId;
     }
 
     public Long getId() {
@@ -73,6 +86,10 @@ public class Article {
 
     public String getSourceUrl() {
         return sourceUrl;
+    }
+
+    public Long getFolderId() {
+        return folderId;
     }
 
     public Instant getCreatedAt() {

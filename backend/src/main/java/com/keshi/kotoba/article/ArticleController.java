@@ -34,13 +34,16 @@ public class ArticleController {
         this.articleService = articleService;
     }
 
-    /** 一页摘要。q 按标题筛，不分大小写。 */
+    /**
+     * 一页摘要。q 按标题筛，不分大小写。folder 不传是全部，传 0 是未归档，传集 id 就只看那个集。
+     */
     @GetMapping
     public ArticleListResponse list(@AuthenticationPrincipal AppUserPrincipal user,
                                     @RequestParam(defaultValue = "0") int page,
                                     @RequestParam(defaultValue = "20") int size,
-                                    @RequestParam(defaultValue = "") String q) {
-        Page<Article> found = articleService.page(user.id(), q, page, size);
+                                    @RequestParam(defaultValue = "") String q,
+                                    @RequestParam(required = false) Long folder) {
+        Page<Article> found = articleService.page(user.id(), folder, q, page, size);
         return new ArticleListResponse(
                 found.getContent().stream().map(ArticleSummary::from).toList(),
                 found.getNumber(),
@@ -49,8 +52,9 @@ public class ArticleController {
     }
 
     @GetMapping("/stats")
-    public ArticleStats stats(@AuthenticationPrincipal AppUserPrincipal user) {
-        return articleService.stats(user.id());
+    public ArticleStats stats(@AuthenticationPrincipal AppUserPrincipal user,
+                              @RequestParam(required = false) Long folder) {
+        return articleService.stats(user.id(), folder);
     }
 
     @GetMapping("/{id}")
@@ -70,7 +74,7 @@ public class ArticleController {
     public ArticleResponse create(@AuthenticationPrincipal AppUserPrincipal user,
                                   @Valid @RequestBody ArticleRequest request) {
         return ArticleResponse.from(articleService.create(
-                user.id(), request.title(), request.body(), request.sourceUrl()));
+                user.id(), request.title(), request.body(), request.sourceUrl(), request.folderId()));
     }
 
     @PutMapping("/{id}")

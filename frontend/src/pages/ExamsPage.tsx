@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { deleteExam, fetchExams } from '../api'
-import type { ExamSummary } from '../api'
+import { Link, useSearchParams } from 'react-router-dom'
+import { UNFILED, deleteExam, fetchExams, fetchFolders } from '../api'
+import type { ExamSummary, FolderListing } from '../api'
 import { useAuth } from '../auth-context'
 import ExamImport from '../components/ExamImport'
+import FolderBar from '../components/FolderBar'
 import { draftKey, readDraft } from '../exam-draft'
 
 /** 「2015年7月」排在「2015年12月」前面：数字按大小比，不按字符 */
@@ -20,10 +21,17 @@ const LEVEL_NAMES: [string, string][] = [
  * 应试：导进来的真题。排版和阅读列表一个样 —— 一份一行，标题、题数，
  * 下面一行是做到哪儿、标了几道难题，再下面是导入日期。
  * 按标题排：一套真题按年份月份排下来，比按导入时间好找。
+ * 选中的集放在地址栏里（`?folder=2`，0 是未归档）。卷子不多，按集筛在前端做。
  */
 export default function ExamsPage() {
   const { user } = useAuth()
+  const [params, setParams] = useSearchParams()
+  const folderParam = params.get('folder')
+  const scope = folderParam !== null && /^\d+$/.test(folderParam) ? Number(folderParam) : null
+  // 选中的是某个真的集：新导入的卷子进它；全部、未归档就不归档
+  const targetFolder = scope !== null && scope !== UNFILED ? scope : undefined
   const [exams, setExams] = useState<ExamSummary[] | null>(null)
+  const [folders, setFolders] = useState<FolderListing | null>(null)
   const [error, setError] = useState<string | null>(null)
   // 导入完的提醒（有几块没注上音）。单放：导入完列表会重新取，取成功会清掉 error
   const [notice, setNotice] = useState<string | null>(null)
@@ -43,6 +51,12 @@ export default function ExamsPage() {
       .catch((e) => setError(e instanceof Error ? e.message : '加载失败'))
   }, [version])
 
+  useEffect(() => {
+    fetchFolders('EXAM')
+      .then(setFolders)
+      .catch(() => {})
+  }, [version])
+
   const titles = useMemo(() => new Set(exams?.map((exam) => exam.title)), [exams])
 
   async function handleDelete(id: number) {
@@ -56,19 +70,39 @@ export default function ExamsPage() {
   }
 
   const keyword = query.trim()
-  const shown = exams?.filter((exam) => exam.title.includes(keyword)) ?? []
-  const latest = exams?.reduce<string | null>(
+  // 当前集里的卷子：统计、搜索都只看它们
+  const inScope = exams?.filter(
+    (exam) =>
+      scope === null || (scope === UNFILED ? exam.folderId === null : exam.folderId === scope),
+  )
+  const shown = inScope?.filter((exam) => exam.title.includes(keyword)) ?? []
+  const folderNames = new Map(folders?.folders.map((f) => [f.id, f.name]))
+  const latest = inScope?.reduce<string | null>(
     (max, exam) => (max === null || exam.createdAt > max ? exam.createdAt : max),
     null,
   )
 
   return (
     <div>
-      {exams && exams.length > 0 && (
+      {folders && (folders.total > 0 || folders.folders.length > 0) && (
+        <FolderBar
+          kind="EXAM"
+          listing={folders}
+          scope={scope}
+          onSelect={(next) => {
+            setQuery('')
+            setParams(next === null ? {} : { folder: String(next) })
+          }}
+          onChanged={() => setVersion((v) => v + 1)}
+          onError={setError}
+        />
+      )}
+
+      {inScope && inScope.length > 0 && (
         <section className="mb-8 border-b border-usu pb-6">
           <div className="flex items-end gap-10">
-            <Stat label="卷子" value={exams.length} accent />
-            <Stat label="题目" value={exams.reduce((sum, exam) => sum + exam.questionCount, 0)} />
+            <Stat label="卷子" value={inScope.length} accent />
+            <Stat label="题目" value={inScope.reduce((sum, exam) => sum + exam.questionCount, 0)} />
             {latest && (
               <div>
                 <div className="font-mincho text-2xl tabular-nums text-sumi">
@@ -88,6 +122,7 @@ export default function ExamsPage() {
         {importing ? (
           <ExamImport
             existingTitles={titles}
+            folderId={targetFolder}
             onImported={(count, plain) => {
               setNotice(
                 plain > 0 ? `导入了 ${count} 份，但有 ${plain} 块没能注音，那几块是原样存的` : null,
@@ -113,7 +148,7 @@ export default function ExamsPage() {
         {error && <p className="mt-3 text-sm text-shu">{error}</p>}
       </section>
 
-      {exams && exams.length > 1 && (
+      {inScope && inScope.length > 1 && (
         <div className="mb-2 flex items-baseline gap-4 border-b border-usu pb-1.5 focus-within:border-ai">
           <input
             value={query}
@@ -134,6 +169,8 @@ export default function ExamsPage() {
           还没有卷子。把读解、言語知識真题的 .docx
           导进来，就能逐题练：选完马上对答案，还能给每道题标难度。
         </p>
+      ) : inScope?.length === 0 ? (
+        <p className="py-10 text-center text-sm text-hai">这个集里还没有卷子。</p>
       ) : shown.length === 0 ? (
         <p className="py-10 text-center text-sm text-hai">没有标题包含「{keyword}」的卷子。</p>
       ) : (
@@ -185,6 +222,9 @@ export default function ExamsPage() {
               )}
               <p className="mt-1 text-xs text-hai/70">
                 {new Date(exam.createdAt).toLocaleDateString('zh-CN')}
+                {scope === null && exam.folderId !== null && folderNames.has(exam.folderId) && (
+                  <span className="ml-3">{folderNames.get(exam.folderId)}</span>
+                )}
               </p>
             </li>
           ))}

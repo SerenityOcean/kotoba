@@ -20,6 +20,9 @@ public record ArticleRequest(
         @Size(max = 2000, message = "链接太长了")
         @Pattern(regexp = "\\s*(https?://\\S+)?\\s*", flags = Pattern.Flag.CASE_INSENSITIVE,
                 message = "链接要以 http:// 或 https:// 开头")
-        String sourceUrl
+        String sourceUrl,
+
+        // 存到哪个集；空是未归档。改文章时带回原来的，不在这里挪集
+        Long folderId
 ) {
 }

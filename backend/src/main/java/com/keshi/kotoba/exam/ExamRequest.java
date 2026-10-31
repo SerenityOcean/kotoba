@@ -13,6 +13,9 @@ public record ExamRequest(
 
         @NotNull(message = "卷子里没有题目")
         @Valid
-        ExamContent content
+        ExamContent content,
+
+        // 存到哪个集；空是未归档
+        Long folderId
 ) {
 }

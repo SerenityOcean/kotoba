@@ -41,17 +41,25 @@ public class Exam {
     @Column(nullable = false)
     private Instant createdAt;
 
+    /** 所在的集，空就是未归档。 */
+    private Long folderId;
+
     protected Exam() {
     }
 
     public Exam(Long ownerId, String title, String content, int questionCount, int gradedCount,
-                Instant createdAt) {
+                Instant createdAt, Long folderId) {
         this.ownerId = ownerId;
+        this.folderId = folderId;
         this.title = title.trim();
         this.content = content;
         this.questionCount = questionCount;
         this.gradedCount = gradedCount;
         this.createdAt = createdAt;
+    }
+
+    public void moveTo(Long folderId) {
+        this.folderId = folderId;
     }
 
     public Long getId() {
@@ -76,6 +84,10 @@ public class Exam {
 
     public int getGradedCount() {
         return gradedCount;
+    }
+
+    public Long getFolderId() {
+        return folderId;
     }
 
     public Instant getCreatedAt() {

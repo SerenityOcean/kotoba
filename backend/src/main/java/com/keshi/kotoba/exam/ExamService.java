@@ -1,5 +1,7 @@
 package com.keshi.kotoba.exam;
 
+import com.keshi.kotoba.folder.Folder;
+import com.keshi.kotoba.folder.FolderService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.type.TypeReference;
@@ -28,15 +30,18 @@ public class ExamService {
     private final ExamMarkRepository markRepository;
     private final ExamExplanationRepository explanationRepository;
     private final ObjectMapper json;
+    private final FolderService folderService;
 
     public ExamService(ExamRepository examRepository, ExamAttemptRepository attemptRepository,
                        ExamMarkRepository markRepository,
-                       ExamExplanationRepository explanationRepository, ObjectMapper json) {
+                       ExamExplanationRepository explanationRepository, ObjectMapper json,
+                       FolderService folderService) {
         this.examRepository = examRepository;
         this.attemptRepository = attemptRepository;
         this.markRepository = markRepository;
         this.explanationRepository = explanationRepository;
         this.json = json;
+        this.folderService = folderService;
     }
 
     /** 判分的结果：留下的答案（只收卷子里有的题号、选项在范围内的），答对几题、计分几题。 */
@@ -79,7 +84,7 @@ public class ExamService {
                 .map(exam -> {
                     List<ExamAttempt> mine = attempts.getOrDefault(exam.id(), List.of());
                     return new ExamSummary(exam.id(), exam.title(), exam.questionCount(),
-                            exam.gradedCount(), exam.createdAt(), mine.size(),
+                            exam.gradedCount(), exam.createdAt(), exam.folderId(), mine.size(),
                             mine.isEmpty() ? null : attemptResponse(mine.getFirst()),
                             marks.getOrDefault(exam.id(), Map.of()));
                 })
@@ -106,6 +111,13 @@ public class ExamService {
 
     @Transactional
     public ExamResponse create(Long userId, String title, ExamContent content) {
+        return create(userId, title, content, null);
+    }
+
+    /** 存进某个集；folderId 为空就是未归档。集必须是这个人的真题集。 */
+    @Transactional
+    public ExamResponse create(Long userId, String title, ExamContent content, Long folderId) {
+        folderService.requireKind(userId, folderId, Folder.Kind.EXAM);
         List<ExamContent.Question> questions = content.questions();
         if (questions.isEmpty()) {
             throw new InvalidExamException("卷子里没有题目");
@@ -123,7 +135,7 @@ public class ExamService {
         }
         int graded = (int) questions.stream().filter(q -> q.answer() != null).count();
         return response(examRepository.save(
-                new Exam(userId, title, body, questions.size(), graded, Instant.now())),
+                new Exam(userId, title, body, questions.size(), graded, Instant.now(), folderId)),
                 List.of(), Map.of(), Map.of());
     }
 
@@ -184,7 +196,8 @@ public class ExamService {
                                   Map<Integer, Integer> marks,
                                   Map<Integer, QuestionExplanation> explanations) {
         return new ExamResponse(exam.getId(), exam.getTitle(), content(exam),
-                exam.getQuestionCount(), exam.getGradedCount(), exam.getCreatedAt(), attempts, marks,
+                exam.getQuestionCount(), exam.getGradedCount(), exam.getCreatedAt(), exam.getFolderId(),
+                attempts, marks,
                 explanations);
     }
 

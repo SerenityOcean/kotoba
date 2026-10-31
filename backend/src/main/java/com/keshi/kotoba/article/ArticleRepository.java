@@ -13,6 +13,14 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
     Page<Article> findByOwnerIdAndTitleContainingIgnoreCaseOrderByCreatedAtDesc(
             Long ownerId, String keyword, Pageable page);
 
+    /** 某个集里的一页。 */
+    Page<Article> findByOwnerIdAndFolderIdAndTitleContainingIgnoreCaseOrderByCreatedAtDesc(
+            Long ownerId, Long folderId, String keyword, Pageable page);
+
+    /** 没进任何集的一页。 */
+    Page<Article> findByOwnerIdAndFolderIdIsNullAndTitleContainingIgnoreCaseOrderByCreatedAtDesc(
+            Long ownerId, String keyword, Pageable page);
+
     Optional<Article> findByIdAndOwnerId(Long id, Long ownerId);
 
     /** 比这篇新的里面最旧的一篇 —— 列表里紧挨在它上面的那篇。 */
@@ -21,5 +29,19 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
 
     /** 比这篇旧的里面最新的一篇 —— 列表里紧挨在它下面的那篇。 */
     Optional<ArticleLink> findFirstByOwnerIdAndCreatedAtLessThanOrderByCreatedAtDesc(
+            Long ownerId, Instant createdAt);
+
+    // 上一篇/下一篇只在同一个集里走（未归档的互为一堆），连载一篇接一篇不会跳到别处去
+
+    Optional<ArticleLink> findFirstByOwnerIdAndFolderIdAndCreatedAtGreaterThanOrderByCreatedAtAsc(
+            Long ownerId, Long folderId, Instant createdAt);
+
+    Optional<ArticleLink> findFirstByOwnerIdAndFolderIdAndCreatedAtLessThanOrderByCreatedAtDesc(
+            Long ownerId, Long folderId, Instant createdAt);
+
+    Optional<ArticleLink> findFirstByOwnerIdAndFolderIdIsNullAndCreatedAtGreaterThanOrderByCreatedAtAsc(
+            Long ownerId, Instant createdAt);
+
+    Optional<ArticleLink> findFirstByOwnerIdAndFolderIdIsNullAndCreatedAtLessThanOrderByCreatedAtDesc(
             Long ownerId, Instant createdAt);
 }

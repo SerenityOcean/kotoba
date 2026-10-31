@@ -4,6 +4,8 @@ import com.keshi.kotoba.article.ArticleService;
 import com.keshi.kotoba.auth.TooManyAttemptsException;
 import com.keshi.kotoba.card.CardService;
 import com.keshi.kotoba.card.Readings;
+import com.keshi.kotoba.folder.Folder;
+import com.keshi.kotoba.folder.FolderService;
 import com.keshi.kotoba.library.LibraryViews.ArticleRow;
 import com.keshi.kotoba.library.LibraryViews.CardPreview;
 import com.keshi.kotoba.library.LibraryViews.EssayCard;
@@ -67,6 +69,7 @@ public class LibraryService {
     private final Grants grants;
     private final CardService cardService;
     private final ArticleService articleService;
+    private final FolderService folderService;
     private final NamedParameterJdbcTemplate jdbc;
     private final ObjectMapper json;
     private final ObjectProvider<AlipayClient> alipay;
@@ -78,6 +81,7 @@ public class LibraryService {
 
     public LibraryService(PackRepository packs, LibraryEssayRepository essays, Grants grants,
                           CardService cardService, ArticleService articleService,
+                          FolderService folderService,
                           NamedParameterJdbcTemplate jdbc, ObjectMapper json,
                           ObjectProvider<AlipayClient> alipay, Clock clock) {
         this.packs = packs;
@@ -85,6 +89,7 @@ public class LibraryService {
         this.grants = grants;
         this.cardService = cardService;
         this.articleService = articleService;
+        this.folderService = folderService;
         this.jdbc = jdbc;
         this.json = json;
         this.alipay = alipay;
@@ -231,10 +236,13 @@ public class LibraryService {
         Set<String> existing = articleIdsByTitle(userId,
                 content.articles().stream().map(PackContent.Article::title).toList()).keySet();
         int articlesImported = 0;
+        // 一个包的文章进同一个集，集名就是包名，再导入也还是那一个
+        Long folderId = content.articles().isEmpty() ? null
+                : folderService.findOrCreate(userId, Folder.Kind.ARTICLE, content.deckName()).getId();
         // 阅读列表按保存时间倒序：倒着存，包里的第一篇才排在最上面
         for (PackContent.Article article : content.articles().reversed()) {
             if (!existing.contains(article.title())) {
-                articleService.create(userId, article.title(), article.body(), null);
+                articleService.create(userId, article.title(), article.body(), null, folderId);
                 articlesImported++;
             }
         }
