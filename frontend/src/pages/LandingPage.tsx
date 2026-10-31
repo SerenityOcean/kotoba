@@ -47,11 +47,33 @@ const PACK = {
   price: '¥0.99',
 }
 
-const FEATURES = [
-  ['読', '阅读', '存下读过的文章，全文注音，选中一段就地拆解。'],
-  ['拆', '拆解', '翻译、动词活用、语法点，勾选就是卡片。'],
-  ['考', '应试', '导入 JLPT 真题，逐题对答案，每个选项都讲一遍。'],
-  ['到', '彼岸', '立一个考试日，看还剩几周几天、每天做了多少。'],
+/** 每个功能：一句话，再加三条具体怎么用 —— 只说网站真的做得到的 */
+const FEATURES: [jp: string, name: string, line: string, how: string[]][] = [
+  ['読', '阅读', '存下读过的文章，全文注音，选中一段就地拆解。', [
+    '粘贴一篇文章，或一次导入 .docx / .txt 的读解讲义，保存时自动注好振假名',
+    '读到看不懂的地方，用鼠标选中那一句，旁边就出翻译和语法，不用离开页面',
+    '拆出来的词和句子，勾一下就进卡片，下次复习就会考到',
+  ]],
+  ['拆', '拆解', '翻译、动词活用、语法点，勾选就是卡片。', [
+    '粘贴一段日语，一次最多 20 句一起拆',
+    '每句给出翻译、动词的原形和活用、名词、外来语和用到的语法点',
+    '想记的条目打勾就生成卡片，已经有的自动跳过',
+  ]],
+  ['記', '卡片', '按记忆曲线复习，打字考读音。', [
+    '复习时把读音打出来，罗马字自动变成假名；打错了要照着答案打对一遍才放行',
+    '到期的旧卡按时出现，每天放多少新卡在首页自己定',
+    'Anki 牌组直接导入，牌组自带的录音一起带进来，打对读音就播放',
+  ]],
+  ['考', '应试', '导入 JLPT 真题，逐题对答案，每个选项都讲一遍。', [
+    '导入 .docx / .txt 的真题卷，自动切成一道道题',
+    '点下选项马上对答案，再点一下可以撤回；每个选项为什么对、为什么错都讲清楚',
+    '每道题能标难度，之后只练错题，或只看某一档难度的题',
+  ]],
+  ['到', '彼岸', '立一个考试日，看还剩几周几天、每天做了多少。', [
+    '首页顶上一直写着离考试还剩几周几天',
+    '从今天到考试那天画成一条河，沿途标出要经过的节气和满月',
+    '一天一格，那天读了多少、背了多少，格子的颜色就有多深',
+  ]],
 ]
 
 const PRIMARY =
@@ -106,18 +128,27 @@ export default function LandingPage() {
             还有 N4、N3 的路。
           </h3>
           <p className="mt-2.5 text-[13.5px] leading-[1.85] text-hai">
-            言葉不只给初学者。存自己的文章、做真题、拆长难句，一直用到考试那天。
+            言葉不只给初学者。存自己的文章、拆长难句、背自己的卡片、做真题，一直用到考试那天。
           </p>
         </div>
         <ul>
-          {FEATURES.map(([jp, name, text]) => (
+          {FEATURES.map(([jp, name, line, how]) => (
             <li
               key={jp}
-              className="grid grid-cols-[2.4rem_1fr] items-baseline gap-x-2 border-b border-usu py-3.5 text-[13.5px] text-hai sm:grid-cols-[2.75rem_4.5rem_1fr]"
+              className="grid grid-cols-[2.4rem_1fr] items-baseline gap-x-2 border-b border-usu py-4 text-[13.5px] text-hai sm:grid-cols-[2.75rem_4.5rem_1fr]"
             >
               <span className="font-mincho text-2xl text-sumi">{jp}</span>
               <span className="text-sumi">{name}</span>
-              <span className="col-start-2 sm:col-start-auto">{text}</span>
+              <div className="col-start-2 sm:col-start-auto">
+                <p className="text-sumi/80">{line}</p>
+                <ul className="mt-2 space-y-1 text-[12.5px] leading-[1.75]">
+                  {how.map((h) => (
+                    <li key={h} className="relative pl-3 before:absolute before:left-0 before:text-hai/60 before:content-['·']">
+                      {h}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </li>
           ))}
         </ul>
