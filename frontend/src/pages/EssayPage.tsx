@@ -7,6 +7,7 @@ import { useAuth } from '../auth-context'
 import AnalysisPanel from '../components/AnalysisPanel'
 import Furigana from '../components/Furigana'
 import EssayBody from '../library/EssayBody'
+import SharePoster from '../library/SharePoster'
 import { splitTitle } from '../library/essay-title'
 import { POSITION_KEY } from '../library/reading-position'
 import { useSelectionAnalysis } from '../selection'
@@ -23,10 +24,12 @@ export default function EssayPage() {
   const { user } = useAuth()
   const [essay, setEssay] = useState<LibraryEssay | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [sharing, setSharing] = useState(false)
 
   useEffect(() => {
     setEssay(null)
     setError(null)
+    setSharing(false)
     fetchLibraryEssay(slug)
       .then(setEssay)
       .catch((e) => setError(e instanceof Error ? e.message : '加载失败'))
@@ -51,13 +54,17 @@ export default function EssayPage() {
     ? new Date(essay.publishedAt).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
     : '草稿'
 
+  const kicker = essay.pack ? `随笔 · ${essay.pack.title}` : '随笔 · 免费'
+
   return (
+    <>
     <ReaderShell
       back={back}
       title={essay.title}
-      kicker={essay.pack ? `随笔 · ${essay.pack.title}` : '随笔 · 免费'}
+      kicker={kicker}
       meta={[`约 ${essay.minutes} 分钟`, `${essay.chars.toLocaleString()} 字`, date]}
       storageKey={`essay:${essay.slug}`}
+      onShare={() => setSharing(true)}
       after={
         <>
           {essay.next && (
@@ -81,6 +88,16 @@ export default function EssayPage() {
     >
       {(wideNotes) => <EssayBody body={essay.body} wideNotes={wideNotes} />}
     </ReaderShell>
+    {sharing && (
+      <SharePoster
+        slug={essay.slug}
+        title={essay.title}
+        kicker={kicker}
+        body={essay.body}
+        onClose={() => setSharing(false)}
+      />
+    )}
+    </>
   )
 }
 
@@ -166,6 +183,7 @@ function ReaderShell({
   meta,
   storageKey,
   japaneseTitle = false,
+  onShare,
   after,
   children,
 }: {
@@ -175,6 +193,8 @@ function ReaderShell({
   meta?: string[]
   storageKey: string | null
   japaneseTitle?: boolean
+  /** 给了才在顶栏出现「分享」 */
+  onShare?: () => void
   after?: ReactNode
   children: ReactNode | ((wideNotes: boolean) => ReactNode)
 }) {
@@ -330,6 +350,11 @@ function ReaderShell({
             A＋
           </ToolButton>
           <span className="mx-1 h-4 w-px bg-usu" />
+          {onShare && (
+            <ToolButton label="生成分享图" onClick={onShare}>
+              分享
+            </ToolButton>
+          )}
           <ToolButton
             label={sans ? '换成明朝体' : '换成黑体'}
             onClick={() => {
