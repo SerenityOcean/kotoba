@@ -1,14 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fetchShelf, formatPrice } from '../api'
-import type { LibraryEssayCard, PackCard, Shelf } from '../api'
+import type { LibraryEssayCard, PackCard, PackTint, Shelf } from '../api'
 import { useTilt } from '../library/tilt'
 import { splitTitle } from '../library/essay-title'
 import { readingPosition } from '../library/reading-position'
 
 /**
- * 资料页：上面是送给所有读者的随笔（题目竖排，像一本书的扉页），下面是一个个资料包，一行三个，
- * 最后一格是「敬请期待」。资料包是带颜色的卡片，封面一个大字，右上角露出几张里面的卡 —— 不点进去也知道里面是什么。
+ * 资料页：上面是送给所有读者的随笔，下面是一个个资料包。两排是同一种卡片，一行三个，
+ * 各自最后一格是「还在写」。资料包是带颜色的卡片，封面一个大字，右上角露出几张里面的卡 —— 不点进去也知道里面是什么。
  */
 export default function LibraryPage() {
   const [shelf, setShelf] = useState<Shelf | null>(null)
@@ -28,10 +28,17 @@ export default function LibraryPage() {
       {shelf.essays.length > 0 && (
         <section>
           <SectionHead title="送给学语言的你" note="写给每一位读者的长文 · 免费" />
-          <div className="space-y-6">
+          <div className="grid gap-5 sm:grid-cols-2 md:gap-6 lg:grid-cols-3">
             {shelf.essays.map((essay, i) => (
-              <FeaturedEssay key={essay.slug} essay={essay} delay={i * 0.08} />
+              <EssayTile key={essay.slug} essay={essay} tint={ESSAY_TINTS[i % ESSAY_TINTS.length]} delay={i * 0.08} />
             ))}
+            <ComingTile
+              delay={shelf.essays.length * 0.08}
+              glyph="綴"
+              kana="つづる"
+              title="下一篇"
+              note="还在写。写好了，它会出现在这里。"
+            />
           </div>
         </section>
       )}
@@ -42,7 +49,13 @@ export default function LibraryPage() {
           {shelf.packs.map((pack, i) => (
             <PackTile key={pack.slug} pack={pack} delay={0.08 + i * 0.08} />
           ))}
-          <ComingTile delay={0.08 + shelf.packs.length * 0.08} />
+          <ComingTile
+            delay={0.08 + shelf.packs.length * 0.08}
+            glyph="続"
+            kana="つづく"
+            title="敬请期待"
+            note="下一个资料包还在写。写好了，它会出现在这里。"
+          />
         </div>
       </section>
     </div>
@@ -58,13 +71,16 @@ function SectionHead({ title, note }: { title: string; note: string }) {
   )
 }
 
+/** 随笔没有自己的颜色，按顺序轮着用资料包那几种，排在一行里不会撞成一片 */
+const ESSAY_TINTS: PackTint[] = ['ai', 'kin', 'sakura', 'take']
+
 /**
- * 送给读者的那篇：冒号前的主标题竖排在左边，像书的扉页；右边是副题和开头几行，往下淡出去。
- * 主标题太长竖不下（超过 7 个字），就整个横排在上面。读过一半的，右下角换成「接着读」。
+ * 送给读者的随笔：和资料包同一种卡片。封面的大字是主标题的头一个字，右上角露出几页竖排的稿纸，
+ * 最上面那页写着开头几个字。冒号前是主标题，后面的副题放在标题下面。读过一半的，右下角换成「接着读」。
  */
-function FeaturedEssay({ essay, delay }: { essay: LibraryEssayCard; delay: number }) {
+function EssayTile({ essay, tint, delay }: { essay: LibraryEssayCard; tint: PackTint; delay: number }) {
+  const tilt = useTilt<HTMLAnchorElement>()
   const { main, sub } = splitTitle(essay.title)
-  const vertical = [...main].length <= 7
   const position = readingPosition(`essay:${essay.slug}`)
   const action =
     position === null || position < 0.08
@@ -77,58 +93,50 @@ function FeaturedEssay({ essay, delay }: { essay: LibraryEssayCard; delay: numbe
     : null
 
   return (
-    <Link
-      to={`/essay/${essay.slug}`}
-      style={{ animationDelay: `${delay}s` }}
-      className={`group animate-rise relative grid overflow-hidden rounded-[18px] border border-usu bg-washi px-5 pt-8 pb-7 shadow-[0_1px_2px_rgb(0_0_0/0.03),0_10px_28px_-16px_rgb(0_0_0/0.2)] transition-[border-color,box-shadow] duration-300 hover:border-ai/40 hover:shadow-[0_1px_2px_rgb(0_0_0/0.03),0_18px_40px_-18px_rgb(0_0_0/0.28)] sm:px-10 sm:pt-11 sm:pb-9 ${
-        vertical ? 'grid-cols-[auto_minmax(0,1fr)] gap-x-7 sm:gap-x-12' : 'grid-cols-1'
-      }`}
-    >
-      {/* 右上角一枚朱印：像一封信落了款 */}
-      <span
-        aria-hidden
-        className="absolute top-7 right-8 hidden h-11 w-11 rotate-[-6deg] items-center justify-center rounded-[5px] border-[1.5px] border-shu/70 font-mincho text-[1.3rem] text-shu/80 transition-transform duration-500 group-hover:rotate-[-2deg] sm:flex"
+    <div style={{ animationDelay: `${delay}s` }} className="animate-rise">
+      <Link
+        ref={tilt.ref}
+        to={`/essay/${essay.slug}`}
+        onPointerMove={tilt.onPointerMove}
+        onPointerLeave={tilt.onPointerLeave}
+        className={`tint-${tint} group pack-card relative flex h-full min-h-[19rem] flex-col overflow-hidden rounded-[18px] border border-[var(--edge)] bg-[var(--tint)] p-6 pb-5`}
       >
-        葉
-      </span>
-
-      {vertical && (
-        <div className="flex items-start gap-3 font-mincho [writing-mode:vertical-rl]">
-          <span className="pt-1 font-ui text-[0.7rem] tracking-[0.5em] text-ai">随笔</span>
-          <span className="text-[2rem] leading-none tracking-[0.22em] sm:text-[2.5rem]">{main}</span>
+        <div className="relative h-[7.5rem]">
+          <div className="pack-glyph font-mincho text-[5.5rem] leading-none text-[var(--ink)]">{[...main][0]}</div>
+          {/* 几页竖排的稿纸，最上面那页写着开头 */}
+          <div aria-hidden className="pack-fan absolute top-1 right-1 h-28 w-34">
+            {[0, 1, 2].map((n) => (
+              <span
+                key={n}
+                className="absolute top-0 right-0 flex h-[5.8rem] w-[4.4rem] justify-center overflow-hidden rounded-[9px] border border-[var(--edge)] bg-washi px-1.5 py-2 font-mincho text-[0.62rem] leading-[1.7] text-sumi/60 shadow-[0_6px_16px_-10px_rgb(0_0_0/0.35)] [writing-mode:vertical-rl]"
+              >
+                {n === 2 ? [...essay.excerpt].slice(0, 30).join('') : ''}
+              </span>
+            ))}
+          </div>
         </div>
-      )}
 
-      <div className="flex min-w-0 flex-col sm:pr-14">
-        {!vertical && (
-          <>
-            <span className="text-[0.7rem] tracking-[0.5em] text-ai">随笔</span>
-            <h3 className="mt-2 font-mincho text-[1.7rem] leading-snug tracking-[0.1em] sm:text-[2rem]">{main}</h3>
-          </>
-        )}
-        {sub && (
-          <p className={`font-mincho text-[1.02rem] leading-snug tracking-[0.04em] sm:text-[1.35rem] sm:tracking-[0.08em] ${vertical ? '' : 'mt-2'}`}>
-            {sub}
-          </p>
-        )}
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tracking-wider text-hai">
-          <span className="rounded-full border border-ai/40 px-2.5 py-0.5 text-ai">免费</span>
-          {!essay.publishedAt && <span className="text-shu">草稿</span>}
-          <span>约 {essay.minutes} 分钟</span>
-          <span>{essay.chars.toLocaleString()} 字</span>
-          {date && <span>{date}</span>}
+        <span className="text-[0.7rem] tracking-[0.25em] text-[var(--ink)]">
+          随笔 · 免费
+          {!essay.publishedAt && <span className="ml-2 text-shu">草稿</span>}
+        </span>
+        <h3 className="mt-1.5 font-mincho text-[1.45rem] tracking-[0.12em]">{main}</h3>
+        <p className="mt-2.5 text-sm leading-relaxed text-sumi/70">{sub ?? essay.excerpt}</p>
+
+        <div className="mt-4 flex gap-4 text-xs text-sumi/60">
+          <Count n={essay.minutes} unit="分钟" />
+          <Count n={essay.chars.toLocaleString()} unit="字" />
         </div>
-        <p className="fade-out mt-5 max-h-[8.2em] overflow-hidden font-mincho text-[1rem] leading-[2.05] text-sumi/85 sm:text-[1.08rem]">
-          {essay.excerpt}
-        </p>
-        <div className="mt-auto flex items-center justify-end pt-4">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-ai/30 px-4 py-1.5 text-xs tracking-wider text-ai transition-colors duration-300 group-hover:border-ai/60 group-hover:bg-ai/[0.04]">
-            {action}
+
+        <div className="mt-auto flex items-baseline justify-between border-t border-[var(--edge)] pt-4">
+          <span className="text-xs text-sumi/60">{date ?? ''}</span>
+          <span className="text-xs text-[var(--ink)]">
+            {action}{' '}
             <span className="inline-block transition-transform duration-300 group-hover:translate-x-1">→</span>
           </span>
         </div>
-      </div>
-    </Link>
+      </Link>
+    </div>
   )
 }
 
@@ -220,16 +228,28 @@ function PackTile({ pack, delay }: { pack: PackCard; delay: number }) {
 }
 
 /**
- * 架子最后一格：下一个包还在写。和 SOON 的包一样是虚线框，右上角露出几张还没写字的空卡。
- * 不靠后端数据，永远在最后。
+ * 一排架子的最后一格：下一个还在写。和 SOON 的包一样是虚线框，右上角露出几张还没写字的空卡。
+ * 不靠后端数据，永远在最后。随笔和资料包各一格，字不一样。
  */
-function ComingTile({ delay }: { delay: number }) {
+function ComingTile({
+  delay,
+  glyph,
+  kana,
+  title,
+  note,
+}: {
+  delay: number
+  glyph: string
+  kana: string
+  title: string
+  note: string
+}) {
   return (
     <div style={{ animationDelay: `${delay}s` }} className="animate-rise">
       <div className="relative flex h-full min-h-[19rem] flex-col overflow-hidden rounded-[18px] border border-dashed border-usu p-6 pb-5">
         <div className="relative h-[7.5rem]">
           <div lang="ja" className="font-mincho text-[5.5rem] leading-none text-usu">
-            続
+            {glyph}
           </div>
           <div aria-hidden className="pack-fan absolute top-1 right-1 h-28 w-34">
             {[0, 1, 2].map((n) => (
@@ -244,10 +264,10 @@ function ComingTile({ delay }: { delay: number }) {
         </div>
 
         <span lang="ja" className="text-[0.7rem] tracking-[0.25em] text-hai">
-          つづく
+          {kana}
         </span>
-        <h3 className="mt-1.5 font-mincho text-[1.45rem] tracking-[0.12em] text-hai">敬请期待</h3>
-        <p className="mt-2.5 text-sm leading-relaxed text-sumi/70">下一个资料包还在写。写好了，它会出现在这里。</p>
+        <h3 className="mt-1.5 font-mincho text-[1.45rem] tracking-[0.12em] text-hai">{title}</h3>
+        <p className="mt-2.5 text-sm leading-relaxed text-sumi/70">{note}</p>
 
         <div className="mt-auto flex items-baseline justify-between pt-4">
           <span className="text-xs text-hai">还在写</span>
@@ -257,7 +277,7 @@ function ComingTile({ delay }: { delay: number }) {
   )
 }
 
-function Count({ n, unit }: { n: number; unit: string }) {
+function Count({ n, unit }: { n: number | string; unit: string }) {
   return (
     <span>
       <span className="mr-0.5 font-mincho text-lg text-sumi">{n}</span>
