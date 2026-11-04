@@ -3,6 +3,8 @@ package com.keshi.kotoba.exam;
 import com.keshi.kotoba.analyze.AnalysisEngine;
 import com.keshi.kotoba.analyze.AnalysisUnavailableException;
 import com.keshi.kotoba.analyze.AnalyzeQuota;
+import com.keshi.kotoba.text.FuriganaNotation;
+import com.keshi.kotoba.text.JapaneseReading;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -37,12 +39,16 @@ public class ExplanationService {
                正确答案那项的 verdict 说它为什么成立。
             4. 题目里 ⟦⟧ 括起来的是原卷画下划线的部分；★ 是排列题要回答的那个空；
                （　）和【数字】是要填的空。
-            5. 全部用中文讲。引用日语照原样写，需要读音就用括号注在后面，
-               例如「行事（ぎょうじ）」，不要用方括号。
+            5. 全部用中文讲 —— 题目和选项是日语，讲解也必须是中文，不要整段写日语。
+               引用日语照原样写，需要读音就用括号注在后面，
+               例如「行事（ぎょうじ）」，不要用方括号。要加引号用「」，不要用英文双引号。
             6. 给了正确答案就以它为准，不要另选。没给答案的，自己判断，
                在 reason 开头写明「讲义没给答案，按题意应选 X」。
             7. 吃不准的地方不要编。
-            8. JSON 的括号要成对：每个对象写完先用 } 收口，再用 ] 收数组。
+            8. example 用正确选项那个词或句型另造一个例句，让读者看到它在别的句子里怎么用；
+               exampleTranslation 是它的中文翻译。例句要自然、是 N2 学习者会碰到的场景，
+               不要照搬题目原句。读解题的选项是内容概括，两项都写空串。
+            9. JSON 的括号要成对：每个对象写完先用 } 收口，再用 ] 收数组。
             """;
 
     /** 卷面里的注音是「行事[ぎょうじ]」，送给模型前摘掉：读音题里注音就是答案 */
@@ -69,8 +75,10 @@ public class ExplanationService {
      */
     public QuestionExplanation explain(Long userId, Long examId, int number) {
         ExamContent content = examService.content(userId, examId);
-        Optional<QuestionExplanation> saved = find(examId, number);
-        if (saved.isPresent()) {
+        Optional<ExamExplanation> row = repository.findByExamIdAndQuestionNumber(examId, number);
+        Optional<QuestionExplanation> saved = row.map(this::read);
+        // 加例句之前存下的解析没有例句：再点一次就重新生成，换掉旧的
+        if (saved.isPresent() && !saved.get().predatesExample()) {
             return saved.get();
         }
 
@@ -84,9 +92,14 @@ public class ExplanationService {
 
         QuestionExplanation explanation = tidy(
                 engine.generate(SYSTEM_PROMPT, prompt, QuestionExplanation.class));
+        String written = json.writeValueAsString(explanation);
         try {
-            repository.save(new ExamExplanation(examId, number,
-                    json.writeValueAsString(explanation), engine.describe(), Instant.now()));
+            if (row.isPresent()) {
+                row.get().replace(written, engine.describe(), Instant.now());
+                repository.save(row.get());
+            } else {
+                repository.save(new ExamExplanation(examId, number, written, engine.describe(), Instant.now()));
+            }
         } catch (DataIntegrityViolationException e) {
             // 同一题点了两下，两边同时在写：先存下的那份为准，前后看到的才一样
             return find(examId, number).orElse(explanation);
@@ -95,8 +108,11 @@ public class ExplanationService {
     }
 
     private Optional<QuestionExplanation> find(Long examId, int number) {
-        return repository.findByExamIdAndQuestionNumber(examId, number)
-                .map(saved -> json.readValue(saved.getContent(), QuestionExplanation.class));
+        return repository.findByExamIdAndQuestionNumber(examId, number).map(this::read);
+    }
+
+    private QuestionExplanation read(ExamExplanation saved) {
+        return json.readValue(saved.getContent(), QuestionExplanation.class);
     }
 
     /**
@@ -153,10 +169,10 @@ public class ExplanationService {
         return RUBY.matcher(text).replaceAll("$1");
     }
 
-    /** 选项按序号排好；null 换成空，界面不用防。 */
+    /** 选项按序号排好；null 换成空，界面不用防；例句在本地注上音。 */
     static QuestionExplanation tidy(QuestionExplanation explanation) {
         if (explanation == null) {
-            return new QuestionExplanation("", "", List.of());
+            return new QuestionExplanation("", "", List.of(), "", "");
         }
         List<QuestionExplanation.Choice> choices = explanation.choices() == null
                 ? List.of()
@@ -166,6 +182,9 @@ public class ExplanationService {
         return new QuestionExplanation(
                 explanation.point() == null ? "" : explanation.point(),
                 explanation.reason() == null ? "" : explanation.reason(),
-                choices);
+                choices,
+                explanation.example() == null || explanation.example().isBlank() ? ""
+                        : JapaneseReading.annotate(FuriganaNotation.bracketize(explanation.example().strip())),
+                explanation.exampleTranslation() == null ? "" : explanation.exampleTranslation().strip());
     }
 }

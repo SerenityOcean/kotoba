@@ -45,6 +45,13 @@ public class ExamExplanation {
         this.createdAt = createdAt;
     }
 
+    /** 重新生成后换掉旧的内容 */
+    public void replace(String content, String model, Instant createdAt) {
+        this.content = content;
+        this.model = model;
+        this.createdAt = createdAt;
+    }
+
     public int getQuestionNumber() {
         return questionNumber;
     }

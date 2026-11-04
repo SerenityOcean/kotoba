@@ -13,6 +13,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.LinkedHashMap;
@@ -42,7 +44,14 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
      * 再在提示词里点名。思考对语法分析是有用的，不值得为了强制调用关掉它。
      */
     private static final String TOOL_INSTRUCTION =
-            "\n\n把拆解结果通过 " + TOOL_NAME + " 函数提交，不要用普通文字回答。";
+            "\n\n把结果通过 " + TOOL_NAME + " 函数提交，不要用普通文字回答。"
+                    + "字符串里要加引号就用「」或“”，不要用英文双引号 \"。";
+
+    /**
+     * 结果读不出来时再要一次，但只在第一次回得快的时候：两次加起来不能超过
+     * nginx 的 proxy_read_timeout，不然用户看到的是裸 504。
+     */
+    private static final Duration RETRY_WITHIN = Duration.ofSeconds(35);
 
     private final RestClient http;
     private final ObjectMapper json;
@@ -117,7 +126,16 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
                 ? Map.of("type", "function", "function", Map.of("name", TOOL_NAME))
                 : "auto");
 
-        return parse(extractArguments(post(body)), type);
+        Instant start = Instant.now();
+        try {
+            return parse(extractArguments(post(body)), type);
+        } catch (ResultUnreadableException e) {
+            if (Duration.between(start, Instant.now()).compareTo(RETRY_WITHIN) > 0) {
+                throw e;
+            }
+            log.warn("{} 的结果读不出来，再要一次：{}", model, e.getMessage());
+            return parse(extractArguments(post(body)), type);
+        }
     }
 
     private ChatResponse post(Map<String, Object> body) {
@@ -255,25 +273,102 @@ class OpenAiCompatibleEngine implements AnalysisEngine {
         return changed ? out.toString() : null;
     }
 
+    /**
+     * 把字符串里没转义的英文双引号转义掉，没找到返回 null。
+     *
+     * <p>模型写中文讲解爱用英文引号：{@code "verdict":"意思是"如果有"，比…"}，
+     * 中间那个 {@code "} 把字符串提前收了口，Jackson 报「Unexpected character ('比')」。
+     * 真正收口的引号后面（隔着空白）只能跟 {@code , } ] :}，逗号后面还得是下一个
+     * 值的开头；跟着别的字的，就是正文里的引号。
+     */
+    static String escapeStrayQuotes(String text) {
+        StringBuilder out = new StringBuilder(text.length() + 16);
+        boolean inString = false;
+        boolean escaped = false;
+        boolean changed = false;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (!inString) {
+                inString = c == '"';
+            } else if (escaped) {
+                escaped = false;
+            } else if (c == '\\') {
+                escaped = true;
+            } else if (c == '"') {
+                if (closesString(text, i + 1)) {
+                    inString = false;
+                } else {
+                    out.append('\\');
+                    changed = true;
+                }
+            }
+            out.append(c);
+        }
+        return changed ? out.toString() : null;
+    }
+
+    /** from 处（跳过空白）是不是一个字符串收口之后该出现的东西。 */
+    private static boolean closesString(String text, int from) {
+        int i = skipSpace(text, from);
+        if (i >= text.length()) {
+            return true;
+        }
+        char next = text.charAt(i);
+        if (next == '}' || next == ']' || next == ':') {
+            return true;
+        }
+        if (next != ',') {
+            return false;
+        }
+        int j = skipSpace(text, i + 1);
+        if (j >= text.length()) {
+            return true;
+        }
+        char value = text.charAt(j);
+        return value == '"' || value == '{' || value == '[' || value == '-'
+                || Character.isDigit(value) || value == 't' || value == 'f' || value == 'n';
+    }
+
+    private static int skipSpace(String text, int from) {
+        int i = from;
+        while (i < text.length() && Character.isWhitespace(text.charAt(i))) {
+            i++;
+        }
+        return i;
+    }
+
     private <T> T parse(String arguments, Class<T> type) {
         try {
             return read(arguments, type);
         } catch (JacksonException e) {
-            String repaired = closeUnclosed(arguments);
-            if (repaired != null) {
+            // 两种常见的写坏：漏了右括号、字符串里有没转义的引号。两种都试，也试两种叠在一起的
+            String quoted = escapeStrayQuotes(arguments);
+            String closed = closeUnclosed(quoted != null ? quoted : arguments);
+            for (String repaired : new String[] {quoted, closed}) {
+                if (repaired == null) {
+                    continue;
+                }
                 try {
                     T result = read(repaired, type);
                     // 留个记录：看得出模型多常这样，换模型时有个参照
-                    log.warn("{} 返回的 JSON 漏了右括号，补上后读出来了（{} 字符）", model, arguments.length());
+                    log.warn("{} 返回的 JSON 有毛病（{}），修好后读出来了（{} 字符）",
+                            model, e.getOriginalMessage(), arguments.length());
                     return result;
                 } catch (JacksonException ignored) {
-                    // 补了括号还是不行：报原来的错，那才是模型真正写坏的地方
+                    // 修了还是不行：报原来的错，那才是模型真正写坏的地方
                 }
             }
             // 带上原因和长度：截断和格式不对是两回事，光说「看不懂」没法排查
-            throw new AnalysisFailedException(
+            throw new ResultUnreadableException(
                     "模型返回的结果解析不了（" + arguments.length() + " 字符）："
                             + e.getOriginalMessage(), e);
+        }
+    }
+
+    /** 结果读不出来：和服务报错、连不上不同，再要一次多半就好了。 */
+    static final class ResultUnreadableException extends AnalysisFailedException {
+        ResultUnreadableException(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 

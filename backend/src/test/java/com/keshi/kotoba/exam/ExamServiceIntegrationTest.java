@@ -11,6 +11,7 @@ import com.keshi.kotoba.analyze.AnalyzeQuota;
 import com.keshi.kotoba.analyze.StubEngine;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
@@ -130,7 +131,7 @@ class ExamServiceIntegrationTest {
         long id = examService.create(userId, "卷子", content()).id();
         QuestionExplanation written = new QuestionExplanation("考点", "因为", List.of(
                 new QuestionExplanation.Choice(2, "二", "不对"),
-                new QuestionExplanation.Choice(1, "一", "不对")));
+                new QuestionExplanation.Choice(1, "一", "不对")), "雨が降った", "下雨了");
         StubEngine engine = new StubEngine(written);
         ExplanationService service = new ExplanationService(examService, explanationRepository,
                 StubEngine.provide(engine), quota, json);
@@ -138,6 +139,7 @@ class ExamServiceIntegrationTest {
         QuestionExplanation first = service.explain(userId, id, 55);
         assertEquals(List.of(1, 2), first.choices().stream().map(QuestionExplanation.Choice::number).toList());
         assertTrue(engine.lastText.contains("正确答案：3"));
+        assertEquals("雨[あめ]が降[ふ]った", first.example(), "例句在本地注音");
 
         engine.lastText = null;
         assertEquals(first, service.explain(userId, id, 55));
@@ -146,6 +148,27 @@ class ExamServiceIntegrationTest {
 
         assertThrows(InvalidExamException.class, () -> service.explain(userId, id, 99));
         assertThrows(ExamNotFoundException.class, () -> service.explain(createUser(), id, 55));
+    }
+
+    @Test
+    @DisplayName("加例句之前存下的解析：再要一次就重新生成，换掉那一行")
+    void regeneratesExplanationWithoutExample() {
+        long id = examService.create(userId, "卷子", content()).id();
+        explanationRepository.save(new ExamExplanation(id, 55,
+                "{\"point\":\"旧\",\"reason\":\"\",\"choices\":[]}", "old", Instant.now()));
+        assertTrue(examService.find(userId, id).explanations().get(55).predatesExample());
+
+        StubEngine engine = new StubEngine(new QuestionExplanation("新", "因为", List.of(), "", ""));
+        ExplanationService service = new ExplanationService(examService, explanationRepository,
+                StubEngine.provide(engine), quota, json);
+
+        assertEquals("新", service.explain(userId, id, 55).point());
+        assertEquals(1, jdbc.queryForObject(
+                "SELECT count(*) FROM exam_explanation WHERE exam_id = ?", Integer.class, id));
+
+        engine.lastText = null;
+        assertEquals("新", service.explain(userId, id, 55).point());
+        assertNull(engine.lastText, "空串例句（读解题）不算旧的，不该再调模型");
     }
 
     @Test

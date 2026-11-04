@@ -16,6 +16,7 @@ public record AnalyzedSentence(
         List<VerbUsage> verbs,
 
         @JsonPropertyDescription("句中其余值得学的词：名词、サ变名词、副词、连体词、接续词，每个一项。"
+                + "副词不论多常见（少し、よく、まだ、もう）都要列，一个不漏。"
                 + "动词形容词归 verbs，片假名外来语归 loanwords，不要重复列。没有就给空数组")
         List<Word> words,
 

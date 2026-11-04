@@ -53,6 +53,28 @@ class OpenAiCompatibleEngineTest {
     }
 
     @Test
+    @DisplayName("中文讲解里没转义的英文引号：转义掉再读")
+    void escapesStrayQuotesInsideStrings() {
+        // 线上碰到的：Unexpected character ('比'): was expecting comma to separate Object entries
+        String broken = "{\"choices\":[{\"number\":1,\"verdict\":\"就是敬语版的\"如果有……的话\"，比较\"},"
+                + " {\"number\":2, \"verdict\" : \"说\"好\", 不对\"}]}";
+        assertThrows(Exception.class, () -> ENGINE.readFirstValue(broken));
+
+        String repaired = OpenAiCompatibleEngine.escapeStrayQuotes(broken);
+
+        JsonNode choices = ENGINE.readFirstValue(repaired).get("choices");
+        assertEquals("就是敬语版的\"如果有……的话\"，比较", choices.get(0).get("verdict").stringValue());
+        assertEquals("说\"好\", 不对", choices.get(1).get("verdict").stringValue());
+    }
+
+    @Test
+    @DisplayName("本来就没毛病的 JSON，引号修补不动它")
+    void leavesWellQuotedJsonAlone() {
+        assertNull(OpenAiCompatibleEngine.escapeStrayQuotes(
+                "{\"a\": \"x\\\"y\", \"b\": [\"c\", 1, true, null], \"d\": {\"e\": \"\"}}"));
+    }
+
+    @Test
     @DisplayName("字符串里的括号和转义引号不算数")
     void ignoresBracketsInsideStrings() {
         String broken = "{\"a\":[{\"b\":\"[注]は\\\"}\\\"\"]}";

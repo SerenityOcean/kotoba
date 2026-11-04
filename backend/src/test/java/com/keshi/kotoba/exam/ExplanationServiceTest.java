@@ -39,10 +39,12 @@ class ExplanationServiceTest {
     void tidiesModelOutput() {
         QuestionExplanation tidy = ExplanationService.tidy(new QuestionExplanation(null, "因为", List.of(
                 new QuestionExplanation.Choice(3, "三", ""),
-                new QuestionExplanation.Choice(1, "一", ""))));
+                new QuestionExplanation.Choice(1, "一", "")), null, null));
 
         assertEquals("", tidy.point());
         assertEquals(List.of(1, 3), tidy.choices().stream().map(QuestionExplanation.Choice::number).toList());
-        assertEquals(List.of(), ExplanationService.tidy(new QuestionExplanation("", "", null)).choices());
+        assertEquals("", tidy.example());
+        assertEquals("", tidy.exampleTranslation());
+        assertEquals(List.of(), ExplanationService.tidy(new QuestionExplanation("", "", null, "", "")).choices());
     }
 }

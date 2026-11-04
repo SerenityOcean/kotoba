@@ -4,6 +4,7 @@ import { explainQuestion, fetchExam, markQuestion, submitExam } from '../api'
 import type { Exam, ExamAttempt, MarkLevel, QuestionExplanation } from '../api'
 import { useAuth } from '../auth-context'
 import ExamText from '../components/ExamText'
+import Furigana from '../components/Furigana'
 import AnalysisPanel from '../components/AnalysisPanel'
 import { useSelectionAnalysis } from '../selection'
 import type { SelectionAnalysis } from '../selection'
@@ -193,10 +194,12 @@ function ExamPaper({ examId }: { examId: number }) {
     })
   }
 
-  // 生成过的点一下就是展开 / 收起；没生成过的先去要，到了再展开
+  // 生成过的点一下就是展开 / 收起；没生成过的先去要，到了再展开。
+  // 加例句之前生成的（没有 example）展开时重新要一份，要不到就先看旧的
   async function explain(number: number) {
     if (!exam || explaining.has(number)) return
-    if (explanations[number]) {
+    const saved = explanations[number]
+    if (saved && (saved.example != null || expanded.has(number))) {
       setExpanded((current) => toggled(current, number, !current.has(number)))
       return
     }
@@ -207,6 +210,7 @@ function ExamPaper({ examId }: { examId: number }) {
       setExplanations((current) => ({ ...current, [number]: explanation }))
       setExpanded((current) => toggled(current, number, true))
     } catch (e) {
+      if (saved) setExpanded((current) => toggled(current, number, true))
       setExplainErrors((current) => ({
         ...current,
         [number]: e instanceof Error ? e.message : '解析没生成出来',
@@ -680,12 +684,30 @@ function ExplanationView({
               <span className="min-w-0">
                 <span>{choice.meaning}</span>
                 {choice.verdict && <span className="block text-hai">{choice.verdict}</span>}
+                {choice.number === answer && <Example explanation={explanation} />}
               </span>
             </li>
           )
         })}
       </ol>
+      {answer == null && <Example explanation={explanation} />}
     </div>
+  )
+}
+
+/** 正解另造的一个例句和中文翻译，挂在正解那项下面 */
+function Example({ explanation }: { explanation: QuestionExplanation }) {
+  if (!explanation.example) return null
+  return (
+    <span className="mt-1.5 block rounded bg-ai/5 px-2.5 py-1.5">
+      <span className="mr-2 text-xs text-ai">例</span>
+      <span className="leading-loose">
+        <Furigana text={explanation.example} />
+      </span>
+      {explanation.exampleTranslation && (
+        <span className="block text-hai">{explanation.exampleTranslation}</span>
+      )}
+    </span>
   )
 }
 

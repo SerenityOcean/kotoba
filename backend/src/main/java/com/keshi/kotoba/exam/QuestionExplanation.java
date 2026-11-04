@@ -1,5 +1,6 @@
 package com.keshi.kotoba.exam;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 
 import java.util.List;
@@ -19,8 +20,21 @@ public record QuestionExplanation(
         String reason,
 
         @JsonPropertyDescription("每个选项一项，按选项顺序，一个不漏")
-        List<Choice> choices
+        List<Choice> choices,
+
+        @JsonPropertyDescription("用正确选项那个词或句型新造一个日语例句，一句，N2 难度，"
+                + "不要照搬题目原句，也不要注音。读解题的选项是整句的内容概括，造不出例句，写空串")
+        String example,
+
+        @JsonPropertyDescription("example 的中文翻译，自然通顺；example 是空串这里也写空串")
+        String exampleTranslation
 ) {
+
+    /** 存下的解析里没有例句字段：是加这两个字段之前生成的，要重新生成 */
+    @JsonIgnore
+    public boolean predatesExample() {
+        return example == null;
+    }
 
     public record Choice(
 
