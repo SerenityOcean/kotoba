@@ -22,11 +22,11 @@ public final class LibraryViews {
      *
      * @param fan        封面右上角露出来的那几张卡的正面
      * @param priceCents 分；还在写的包可能没有
-     * @param entry      没卡片、没文章、只有一篇随笔的包：那篇随笔的 slug，点开包直接进随笔；其他包是 null
+     * @param entry      没卡片、没文章、没卷子、只有一篇随笔的包：那篇随笔的 slug，点开包直接进随笔；其他包是 null
      */
     public record PackCard(String slug, String title, String level, String glyph, String tint,
                            String summary, Pack.Status status, Integer priceCents, String note,
-                           int cardCount, int articleCount, int essayCount, List<String> fan,
+                           int cardCount, int articleCount, int examCount, int essayCount, List<String> fan,
                            boolean owned, String entry) {
     }
 
@@ -38,7 +38,8 @@ public final class LibraryViews {
      * @param importedAt 解锁了但还没导入（付完钱就关了页面）时是 null
      */
     public record PackDetail(PackCard card, String intro, String deckName, Long deckId, List<CardPreview> cards,
-                             List<ArticleRow> articles, List<EssayRow> essays, boolean payable,
+                             List<ArticleRow> articles, List<ExamRow> exams, List<EssayRow> essays,
+                             boolean payable,
                              Instant grantedAt, Instant importedAt) {
     }
 
@@ -49,6 +50,13 @@ public final class LibraryViews {
      * @param articleId 解锁导入之后，用户阅读列表里对应那篇的 id（按标题找）；没有就是 null
      */
     public record ArticleRow(int index, String title, int chars, String peek, Long articleId) {
+    }
+
+    /**
+     * @param questionCount 小题数
+     * @param examId        解锁导入之后，用户应试列表里对应那份的 id（按标题找）；没有就是 null
+     */
+    public record ExamRow(int index, String title, int questionCount, Long examId) {
     }
 
     public record EssayRow(String slug, String title, String peek, int minutes) {
@@ -76,7 +84,8 @@ public final class LibraryViews {
     }
 
     public record ImportSummary(Long deckId, String deckName, int cardsImported, int cardsSkipped,
-                                int articlesImported, int articlesSkipped) {
+                                int articlesImported, int articlesSkipped, int examsImported,
+                                int examsSkipped) {
     }
 
     public record Redeemed(String slug, String title) {

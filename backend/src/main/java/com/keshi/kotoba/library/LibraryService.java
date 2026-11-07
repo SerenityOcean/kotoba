@@ -4,6 +4,7 @@ import com.keshi.kotoba.article.ArticleService;
 import com.keshi.kotoba.auth.TooManyAttemptsException;
 import com.keshi.kotoba.card.CardService;
 import com.keshi.kotoba.card.Readings;
+import com.keshi.kotoba.exam.ExamService;
 import com.keshi.kotoba.folder.Folder;
 import com.keshi.kotoba.folder.FolderService;
 import com.keshi.kotoba.library.LibraryViews.ArticleRow;
@@ -12,6 +13,7 @@ import com.keshi.kotoba.library.LibraryViews.EssayCard;
 import com.keshi.kotoba.library.LibraryViews.EssayRef;
 import com.keshi.kotoba.library.LibraryViews.EssayRow;
 import com.keshi.kotoba.library.LibraryViews.EssayView;
+import com.keshi.kotoba.library.LibraryViews.ExamRow;
 import com.keshi.kotoba.library.LibraryViews.ImportSummary;
 import com.keshi.kotoba.library.LibraryViews.PackCard;
 import com.keshi.kotoba.library.LibraryViews.PackDetail;
@@ -40,6 +42,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -69,6 +72,7 @@ public class LibraryService {
     private final Grants grants;
     private final CardService cardService;
     private final ArticleService articleService;
+    private final ExamService examService;
     private final FolderService folderService;
     private final NamedParameterJdbcTemplate jdbc;
     private final ObjectMapper json;
@@ -78,10 +82,18 @@ public class LibraryService {
      * 限一下是不让人拿脚本对着接口刷，顺便把输错好几次的人拦下来看一眼。
      */
     private final RateLimiter redeemLimiter;
+    /**
+     * 解析过的包内容，按包 id 存，包改过（updatedAt 变了）就重新解析。
+     * 带真题卷的包 JSON 有好几 MB，书架每次打开都要读每个包露出来的那几张卡，不能每次都解析。
+     */
+    private final Map<Long, Parsed> parsed = new ConcurrentHashMap<>();
+
+    private record Parsed(Instant updatedAt, PackContent content) {
+    }
 
     public LibraryService(PackRepository packs, LibraryEssayRepository essays, Grants grants,
                           CardService cardService, ArticleService articleService,
-                          FolderService folderService,
+                          ExamService examService, FolderService folderService,
                           NamedParameterJdbcTemplate jdbc, ObjectMapper json,
                           ObjectProvider<AlipayClient> alipay, Clock clock) {
         this.packs = packs;
@@ -89,6 +101,7 @@ public class LibraryService {
         this.grants = grants;
         this.cardService = cardService;
         this.articleService = articleService;
+        this.examService = examService;
         this.folderService = folderService;
         this.jdbc = jdbc;
         this.json = json;
@@ -148,6 +161,15 @@ public class LibraryService {
                     EssayText.excerpt(a.body(), 60), imported.get(a.title())));
         }
 
+        Map<String, Long> importedExams = grant.isPresent()
+                ? examIdsByTitle(userId, content.exams().stream().map(PackContent.Exam::title).toList())
+                : Map.of();
+        List<ExamRow> examRows = new ArrayList<>();
+        for (int i = 0; i < content.exams().size(); i++) {
+            PackContent.Exam e = content.exams().get(i);
+            examRows.add(new ExamRow(i, e.title(), e.content().questions().size(), importedExams.get(e.title())));
+        }
+
         List<LibraryEssay> visibleEssays = packEssays(pack.getId(), owner);
         List<EssayRow> essayRows = visibleEssays.stream()
                 .map(e -> new EssayRow(e.getSlug(), e.getTitle(), EssayText.excerpt(e.getBody(), 80),
@@ -162,7 +184,7 @@ public class LibraryService {
         boolean payable = grant.isEmpty() && pack.onSale() && alipay.getIfAvailable() != null;
         return new PackDetail(
                 packCard(pack, visibleEssays, owns),
-                pack.getIntro(), content.deckName(), deckId, preview, rows, essayRows, payable,
+                pack.getIntro(), content.deckName(), deckId, preview, rows, examRows, essayRows, payable,
                 grant.map(Grants.Grant::grantedAt).orElse(null),
                 grant.map(Grants.Grant::importedAt).orElse(null));
     }
@@ -213,8 +235,8 @@ public class LibraryService {
     // ---- 解锁之后 ---------------------------------------------------------
 
     /**
-     * 把包里的卡片和文章复制进用户自己的账号。再导一次是安全的：
-     * 包里已有的卡（按正面）、阅读里已有的同名文章都跳过 —— 包更新了，再导一次就只补新增的，
+     * 把包里的卡片、文章和卷子复制进用户自己的账号。再导一次是安全的：
+     * 包里已有的卡（按正面）、阅读里已有的同名文章、应试里已有的同名卷子都跳过 —— 包更新了，再导一次就只补新增的，
      * 用户改过的卡也不会被覆盖。
      */
     @Transactional
@@ -250,6 +272,20 @@ public class LibraryService {
             }
         }
 
+        Set<String> existingExams = examIdsByTitle(userId,
+                content.exams().stream().map(PackContent.Exam::title).toList()).keySet();
+        int examsImported = 0;
+        // 卷子也进一个以包名命名的集（真题集和文章集是分开的两种）
+        Long examFolderId = content.exams().isEmpty() ? null
+                : folderService.findOrCreate(userId, Folder.Kind.EXAM, content.deckName()).getId();
+        // 应试列表也是新的在上：倒着存
+        for (PackContent.Exam exam : content.exams().reversed()) {
+            if (!existingExams.contains(exam.title())) {
+                examService.create(userId, exam.title(), exam.content(), examFolderId);
+                examsImported++;
+            }
+        }
+
         grants.markImported(userId, pack.getId(), now);
         return new ImportSummary(
                 cards == null ? null : cards.deckId(),
@@ -257,7 +293,9 @@ public class LibraryService {
                 cards == null ? 0 : cards.imported(),
                 cards == null ? 0 : cards.skipped(),
                 articlesImported,
-                content.articles().size() - articlesImported);
+                content.articles().size() - articlesImported,
+                examsImported,
+                content.exams().size() - examsImported);
     }
 
     /**
@@ -344,7 +382,13 @@ public class LibraryService {
     }
 
     PackContent content(Pack pack) {
-        return json.readValue(pack.getContent(), PackContent.class);
+        Parsed cached = parsed.get(pack.getId());
+        if (cached != null && cached.updatedAt().equals(pack.getUpdatedAt())) {
+            return cached.content();
+        }
+        PackContent content = json.readValue(pack.getContent(), PackContent.class);
+        parsed.put(pack.getId(), new Parsed(pack.getUpdatedAt(), content));
+        return content;
     }
 
     private PackCard packCard(Pack p, List<LibraryEssay> essays, boolean owned) {
@@ -354,7 +398,7 @@ public class LibraryService {
                 .toList();
         return new PackCard(p.getSlug(), p.getTitle(), p.getLevel(), p.getGlyph(), p.getTint(),
                 p.getSummary(), p.getStatus(), p.getPriceCents(), p.getNote(), p.getCardCount(),
-                p.getArticleCount(), essays.size(), fan, owned, entry(p, essays));
+                p.getArticleCount(), p.getExamCount(), essays.size(), fan, owned, entry(p, essays));
     }
 
     private PackRef packRef(Pack pack, boolean owner) {
@@ -363,11 +407,11 @@ public class LibraryService {
     }
 
     /**
-     * 没有卡片、没有文章、只有一篇随笔的包（比如五十音），没有可导入的东西，详情页就多余了：
+     * 没有卡片、没有文章、没有卷子、只有一篇随笔的包（比如五十音），没有可导入的东西，详情页就多余了：
      * 返回那篇随笔的 slug，前端点开包直接进随笔。其他包返回 null。
      */
     private static String entry(Pack p, List<LibraryEssay> essays) {
-        return p.getCardCount() == 0 && p.getArticleCount() == 0 && essays.size() == 1
+        return p.getCardCount() == 0 && p.getArticleCount() == 0 && p.getExamCount() == 0 && essays.size() == 1
                 ? essays.getFirst().getSlug()
                 : null;
     }
@@ -386,6 +430,24 @@ public class LibraryService {
         Map<String, Long> found = new HashMap<>();
         jdbc.query("""
                         SELECT id, title FROM article
+                        WHERE owner_id = :user AND title IN (:titles)
+                        ORDER BY created_at
+                        """,
+                new MapSqlParameterSource().addValue("user", userId).addValue("titles", titles),
+                rs -> {
+                    found.putIfAbsent(rs.getString("title"), rs.getLong("id"));
+                });
+        return found;
+    }
+
+    /** 用户应试列表里这些标题各是哪份。同名的有好几份就取最早存的那份。 */
+    private Map<String, Long> examIdsByTitle(Long userId, List<String> titles) {
+        if (titles.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Long> found = new HashMap<>();
+        jdbc.query("""
+                        SELECT id, title FROM exam
                         WHERE owner_id = :user AND title IN (:titles)
                         ORDER BY created_at
                         """,

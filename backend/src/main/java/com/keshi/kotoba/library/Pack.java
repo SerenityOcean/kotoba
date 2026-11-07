@@ -71,6 +71,9 @@ public class Pack {
     private int articleCount;
 
     @Column(nullable = false)
+    private int examCount;
+
+    @Column(nullable = false)
     private int sort;
 
     @Column(nullable = false)
@@ -88,7 +91,8 @@ public class Pack {
     }
 
     /** 主人整份重写。内容的 JSON 和计数由调用方一起给，免得两边对不上。 */
-    void rewrite(PackUpsertRequest request, String content, int cardCount, int articleCount, Instant now) {
+    void rewrite(PackUpsertRequest request, String content, int cardCount, int articleCount, int examCount,
+                 Instant now) {
         this.title = request.title().strip();
         this.level = request.level().strip();
         this.glyph = request.glyph().strip();
@@ -102,6 +106,7 @@ public class Pack {
         this.content = content;
         this.cardCount = cardCount;
         this.articleCount = articleCount;
+        this.examCount = examCount;
         this.updatedAt = now;
     }
 
@@ -169,6 +174,14 @@ public class Pack {
 
     public int getArticleCount() {
         return articleCount;
+    }
+
+    public int getExamCount() {
+        return examCount;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
     }
 
     public int getSort() {

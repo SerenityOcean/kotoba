@@ -1067,11 +1067,13 @@ export interface PackCard {
   note: string | null
   cardCount: number
   articleCount: number
+  /** 真题卷份数，解锁后进「应试」 */
+  examCount: number
   essayCount: number
   /** 封面右上角露出来的那几张卡 */
   fan: string[]
   owned: boolean
-  /** 只有一篇随笔的包（没卡片、没文章）：那篇随笔的 slug，点开包直接进随笔 */
+  /** 只有一篇随笔的包（没卡片、没文章、没卷子）：那篇随笔的 slug，点开包直接进随笔 */
   entry: string | null
 }
 
@@ -1097,6 +1099,8 @@ export interface PackDetail {
   cards: { front: string; reading: string | null; back: string | null }[]
   /** articleId：解锁导入之后，阅读列表里对应的那篇 */
   articles: { index: number; title: string; chars: number; peek: string; articleId: number | null }[]
+  /** examId：解锁导入之后，应试列表里对应的那份 */
+  exams: { index: number; title: string; questionCount: number; examId: number | null }[]
   essays: { slug: string; title: string; peek: string; minutes: number }[]
   /** 现在能用支付宝买：在卖、没解锁、后端配了支付宝 */
   payable: boolean
@@ -1130,6 +1134,8 @@ export interface PackImport {
   cardsSkipped: number
   articlesImported: number
   articlesSkipped: number
+  examsImported: number
+  examsSkipped: number
 }
 
 /** qrUrl：电脑上放进 iframe 的二维码；payUrl：整页跳去支付宝 */

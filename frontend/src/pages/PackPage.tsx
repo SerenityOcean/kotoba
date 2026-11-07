@@ -70,6 +70,7 @@ export default function PackPage() {
         <div className="relative mt-7 flex gap-8">
           <Big n={card.cardCount} unit="张卡片" />
           {card.articleCount > 0 && <Big n={card.articleCount} unit="篇阅读" />}
+          {card.examCount > 0 && <Big n={card.examCount} unit="份真题" />}
           {card.essayCount > 0 && <Big n={card.essayCount} unit="篇随笔" />}
         </div>
 
@@ -116,6 +117,36 @@ export default function PackPage() {
         </Section>
       )}
 
+      {pack.exams.length > 0 && (
+        <Section title="真题" count={`${pack.exams.length} 份`} hint={owned ? '在你的「应试」里，按卷面作答' : '解锁后进「应试」作答'} delay={0.22}>
+          <div className="grid gap-x-6 sm:grid-cols-2">
+            {pack.exams.map((e) => {
+              const to = owned && e.examId ? `/exam/${e.examId}` : null
+              const row = (
+                <>
+                  <span lang="ja" className="min-w-0 truncate font-mincho text-[0.95rem]">
+                    {e.title}
+                  </span>
+                  <span className="shrink-0 text-xs text-hai">
+                    {e.questionCount} 题{owned && !e.examId ? ' · 还没导入' : ''}
+                  </span>
+                </>
+              )
+              const className = 'flex items-baseline justify-between gap-4 border-b border-[var(--edge)] py-2.5'
+              return to ? (
+                <Link key={e.index} to={to} className={`${className} transition hover:text-[var(--ink)]`}>
+                  {row}
+                </Link>
+              ) : (
+                <div key={e.index} className={className}>
+                  {row}
+                </div>
+              )
+            })}
+          </div>
+        </Section>
+      )}
+
       {pack.essays.length > 0 && (
         <Section title="随笔" count={`${pack.essays.length} 篇`} hint={owned ? '以后写了新的，也会出现在这里' : '解锁后在这里读'} delay={0.26}>
           <div className="grid gap-3.5 sm:grid-cols-2">
@@ -134,7 +165,7 @@ export default function PackPage() {
       )}
 
       <p className="mt-14 border-l-2 border-ai pl-4 text-xs leading-[1.9] text-hai">
-        虚拟内容，解锁后不退款。卡片和文章是复制进你账号的：之后怎么改、怎么删都随你，包里更新了也不会覆盖你改过的。
+        虚拟内容，解锁后不退款。卡片、文章和真题是复制进你账号的：之后怎么改、怎么删都随你，包里更新了也不会覆盖你改过的。
       </p>
 
       {sheet && (
@@ -176,7 +207,7 @@ function BuyRow({ pack, onStart }: { pack: PackDetail; onStart: (start: SheetSta
           <button onClick={() => onStart({ kind: 'import', source: '已解锁' })} className={PRIMARY}>
             导入到我的账号
           </button>
-          <small className="basis-full text-xs text-sumi/55">卡片进「{pack.deckName}」包，文章进阅读</small>
+          <small className="basis-full text-xs text-sumi/55">{whereItGoes(pack)}</small>
         </div>
       )
     }
@@ -285,7 +316,7 @@ function BuyRow({ pack, onStart }: { pack: PackDetail; onStart: (start: SheetSta
 
       <p className="mt-3 text-xs text-sumi/55">
         {pack.payable
-          ? `付完自动导入：卡片进「${pack.deckName}」包，文章进阅读`
+          ? `付完自动导入：${whereItGoes(pack)}`
           : shopLink
             ? '在线支付还没开通：去闲鱼拍下，兑换码会自动发给你，回来点「有兑换码？」输入就能解锁'
             : '在线支付还没开通，现在可以用兑换码解锁'}
@@ -475,10 +506,22 @@ function UnlockSheet({
   )
 }
 
+/** 「卡片进「…」包，文章进阅读，真题进应试」：包里有什么就说什么 */
+function whereItGoes(pack: PackDetail): string {
+  return [
+    pack.card.cardCount > 0 && `卡片进「${pack.deckName}」包`,
+    pack.articles.length > 0 && '文章进阅读',
+    pack.exams.length > 0 && '真题进应试',
+  ]
+    .filter(Boolean)
+    .join('，')
+}
+
 /** 一行一行亮起来：哪样东西放到了哪儿。数字从 0 数上去，看得见东西真的进来了。 */
 function ImportRows({ pack, source, result }: { pack: PackDetail; source: string; result: PackImport | null }) {
   const cards = useCountUp(result?.cardsImported ?? 0, result !== null, 0)
   const articles = useCountUp(result?.articlesImported ?? 0, result !== null, 500)
+  const exams = useCountUp(result?.examsImported ?? 0, result !== null, 500)
   const rows: { label: string; value: ReactNode; ready: boolean }[] = [
     { label: source, value: '✓', ready: true },
     {
@@ -486,12 +529,21 @@ function ImportRows({ pack, source, result }: { pack: PackDetail; source: string
       value: result ? `${cards} 张 → 「${result.deckName}」${result.cardsSkipped ? `，${result.cardsSkipped} 张已有` : ''}` : '…',
       ready: result !== null,
     },
-    {
+  ]
+  if (pack.articles.length > 0) {
+    rows.push({
       label: '阅读',
       value: result ? `${articles} 篇 → 阅读${result.articlesSkipped ? `，${result.articlesSkipped} 篇已有` : ''}` : '…',
       ready: result !== null,
-    },
-  ]
+    })
+  }
+  if (pack.exams.length > 0) {
+    rows.push({
+      label: '真题',
+      value: result ? `${exams} 份 → 应试${result.examsSkipped ? `，${result.examsSkipped} 份已有` : ''}` : '…',
+      ready: result !== null,
+    })
+  }
   if (pack.essays.length > 0) {
     rows.push({ label: '随笔', value: result ? `${pack.essays.length} 篇 → 在资料包里读` : '…', ready: result !== null })
   }

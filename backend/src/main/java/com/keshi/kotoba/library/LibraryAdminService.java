@@ -1,6 +1,7 @@
 package com.keshi.kotoba.library;
 
 import com.keshi.kotoba.analyze.FuriganaService;
+import com.keshi.kotoba.exam.ExamFurigana;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,7 +45,7 @@ public class LibraryAdminService {
     }
 
     /**
-     * 上传一个包。文章的标题和正文在这里注音（原文自带的注音不动），
+     * 上传一个包。文章的标题和正文、卷子的卷面在这里注音（原文自带的注音不动），
      * 导入的时候就只是复制，不用每个用户再跑一遍词典。
      */
     @Transactional
@@ -60,10 +61,14 @@ public class LibraryAdminService {
                         furigana.annotate(a.title()).text(),
                         furigana.annotate(normalize(a.body())).text()))
                 .toList();
-        PackContent content = new PackContent(given.deckName().strip(), given.cards(), articles);
+        List<PackContent.Exam> exams = given.exams().stream()
+                .map(e -> new PackContent.Exam(e.title().strip(), ExamFurigana.annotate(e.content())))
+                .toList();
+        PackContent content = new PackContent(given.deckName().strip(), given.cards(), articles, exams);
 
         Pack pack = packs.findBySlug(slug).orElseGet(() -> new Pack(slug, now));
-        pack.rewrite(request, json.writeValueAsString(content), content.cards().size(), articles.size(), now);
+        pack.rewrite(request, json.writeValueAsString(content), content.cards().size(), articles.size(),
+                exams.size(), now);
         return packs.save(pack);
     }
 

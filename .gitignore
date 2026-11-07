@@ -12,3 +12,6 @@ frontend/public/essay-media/
 
 # 付费资料包（入门牌组和故事），不进公开仓库
 starter-pack/
+
+# N2 真题资料包（真题原文和从里面提炼的卡片），不进公开仓库
+n2-pack/

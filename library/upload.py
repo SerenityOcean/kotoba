@@ -36,11 +36,12 @@ class Client:
         if method != "GET":
             # 登录后 CSRF 令牌会换，每次写之前刷一下
             self.request("GET", "/api/auth/features")
-        headers = {"Content-Type": "application/json"}
+        headers = {"Content-Type": "application/json; charset=utf-8"}
         token = next((c.value for c in self.jar if c.name == "XSRF-TOKEN"), None)
         if token and method != "GET":
             headers["X-XSRF-TOKEN"] = token
-        data = json.dumps(body).encode() if body is not None else None
+        # 日文原样按 UTF-8 发（不转成 \uXXXX）：带真题卷的包有好几 MB，转义了要大一倍多
+        data = json.dumps(body, ensure_ascii=False).encode() if body is not None else None
         req = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
         try:
             with self.opener.open(req, timeout=120) as resp:
@@ -101,7 +102,8 @@ def upload(client, folder):
         if status != 200:
             fail(f"资料包 {slug}（{path.name}）传不上去（{status}）：{(body or {}).get('message')}")
         content = pack["content"]
-        print(f"  包   {slug:<20} {pack['status']:<8} {len(content['cards'])} 张卡，{len(content['articles'])} 篇文章")
+        exams = f"，{len(content['exams'])} 份真题" if content.get("exams") else ""
+        print(f"  包   {slug:<20} {pack['status']:<8} {len(content['cards'])} 张卡，{len(content['articles'])} 篇文章{exams}")
 
     for path in essays:
         slug, essay = read_essay(path)

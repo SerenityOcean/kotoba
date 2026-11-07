@@ -44,7 +44,7 @@ export default function LibraryPage() {
       )}
 
       <section className={shelf.essays.length > 0 ? 'mt-16' : ''}>
-        <SectionHead title="资料包" note="解锁后卡片和文章自动放进你的账号" />
+        <SectionHead title="资料包" note="解锁后卡片、文章和真题自动放进你的账号" />
         <div className="grid gap-5 sm:grid-cols-2 md:gap-6 lg:grid-cols-3">
           {shelf.packs.map((pack, i) => (
             <PackTile key={pack.slug} pack={pack} delay={0.08 + i * 0.08} />
@@ -178,6 +178,7 @@ function PackTile({ pack, delay }: { pack: PackCard; delay: number }) {
         <div className="mt-4 flex gap-4 text-xs text-sumi/60">
           {pack.cardCount > 0 && <Count n={pack.cardCount} unit="张卡" />}
           {pack.articleCount > 0 && <Count n={pack.articleCount} unit="篇阅读" />}
+          {pack.examCount > 0 && <Count n={pack.examCount} unit="份真题" />}
           {pack.essayCount > 0 && <Count n={pack.essayCount} unit="篇随笔" />}
         </div>
       )}

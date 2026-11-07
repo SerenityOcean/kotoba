@@ -2,6 +2,7 @@ package com.keshi.kotoba.library;
 
 import com.keshi.kotoba.auth.TooManyAttemptsException;
 import com.keshi.kotoba.card.CreateCardRequest;
+import com.keshi.kotoba.exam.ExamContent;
 import com.keshi.kotoba.library.LibraryViews.EssayView;
 import com.keshi.kotoba.library.LibraryViews.ImportSummary;
 import com.keshi.kotoba.library.LibraryViews.PackCard;
@@ -247,6 +248,45 @@ class LibraryIntegrationTest {
         // 有卡片的包照常进详情页
         upsertEssay(slug);
         assertNull(find(library.shelf(reader, false), slug).entry());
+    }
+
+    @Test
+    @DisplayName("带真题卷的包：上传时卷面注音（漢字题的下线部和选项不注），导入进以包名命名的真题集，再导一次跳过")
+    void importsExams() {
+        String withExams = "it-" + random();
+        packs.add(withExams);
+        ExamContent.Question reading = new ExamContent.Question(1, "この家の⟦柱⟧は古い。", List.of(),
+                List.of("はしら", "ゆか"), 1);
+        ExamContent.Question grammar = new ExamContent.Question(2, "雨が降る（　）。", List.of(),
+                List.of("一方だ", "最中だ"), 1);
+        ExamContent content = new ExamContent(List.of(), List.of(
+                new ExamContent.Section("問題1", "漢字読み", List.of(
+                        new ExamContent.Passage("", List.of(), List.of(reading)))),
+                new ExamContent.Section("問題7", "文法形式の判断", List.of(
+                        new ExamContent.Passage("", List.of(), List.of(grammar))))));
+        admin.upsertPack(withExams, new PackUpsertRequest("真题", "N2 · 真题", "合", "kin", "一句话", "一段话",
+                Pack.Status.ON_SALE, 0, null, 0, new PackContent("测试真题", List.of(), List.of(),
+                        List.of(new PackContent.Exam("测试卷 2025年12月", content)))), now);
+
+        PackCard card = find(library.shelf(reader, false), withExams);
+        assertEquals(1, card.examCount());
+        assertNull(card.entry());
+        PackDetail before = library.pack(reader, withExams, false);
+        assertEquals(2, before.exams().getFirst().questionCount());
+        assertNull(before.exams().getFirst().examId());
+
+        ImportSummary first = library.importPack(reader, withExams, now);
+        assertEquals(1, first.examsImported());
+        assertEquals(1, library.importPack(reader, withExams, now).examsSkipped());
+
+        Long examId = library.pack(reader, withExams, false).exams().getFirst().examId();
+        assertNotNull(examId);
+        assertEquals("测试真题", jdbc.queryForObject(
+                "SELECT f.name FROM exam e JOIN folder f ON f.id = e.folder_id WHERE e.id = ?", String.class, examId));
+        String stored = jdbc.queryForObject("SELECT content FROM exam WHERE id = ?", String.class, examId);
+        assertTrue(stored.contains("家[いえ]"));
+        assertTrue(stored.contains("⟦柱⟧"));
+        assertTrue(stored.contains("雨[あめ]"));
     }
 
     // ---- 准备数据 ---------------------------------------------------------
