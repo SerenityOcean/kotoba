@@ -172,6 +172,43 @@ class ExamServiceIntegrationTest {
     }
 
     @Test
+    @DisplayName("进度存在后端：换台设备取出来一样；再存是改；列表带做到几题；别人存不了")
+    void savesProgress() {
+        long id = examService.create(userId, "卷子", content()).id();
+        assertNull(examService.find(userId, id).progress());
+        assertEquals(0, examService.list(userId).getFirst().answeredCount());
+
+        // 卷子里没有的題号、超出范围的选项不收
+        ProgressResponse first = examService.saveProgress(userId, id, Map.of(55, 3, 99, 1, 56, 7), 90, null);
+        assertEquals(Map.of(55, 3), first.answers());
+        assertEquals(first, examService.find(userId, id).progress());
+
+        AttemptResponse attempt = examService.submit(userId, id, Map.of(55, 3, 56, 4, 57, 1), 300);
+        ProgressResponse done = examService.saveProgress(userId, id, Map.of(55, 3, 56, 4, 57, 1), 300,
+                attempt.id());
+        assertEquals(attempt.id(), done.recordedAttemptId());
+        assertTrue(!done.updatedAt().isBefore(first.updatedAt()));
+        ExamSummary summary = examService.list(userId).getFirst();
+        assertEquals(3, summary.answeredCount());
+        assertEquals(done.updatedAt(), summary.progressUpdatedAt());
+
+        // 重做：存一份空的，行还在
+        ProgressResponse reset = examService.saveProgress(userId, id, Map.of(), 0, null);
+        assertEquals(Map.of(), reset.answers());
+        assertEquals(1, jdbc.queryForObject(
+                "SELECT count(*) FROM exam_progress WHERE exam_id = ?", Integer.class, id));
+
+        // 别的卷子的成绩记不进来
+        long otherExam = examService.create(userId, "另一份", content()).id();
+        AttemptResponse elsewhere = examService.submit(userId, otherExam, Map.of(55, 3), 10);
+        assertNull(examService.saveProgress(userId, id, Map.of(55, 3), 10, elsewhere.id()).recordedAttemptId());
+
+        long other = createUser();
+        assertThrows(ExamNotFoundException.class,
+                () -> examService.saveProgress(other, id, Map.of(55, 1), 0, null));
+    }
+
+    @Test
     @DisplayName("题号重复的卷子不收")
     void rejectsDuplicateNumbers() {
         ExamContent duplicated = new ExamContent(List.of(), List.of(new ExamContent.Section("", "", List.of(

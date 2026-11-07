@@ -29,17 +29,20 @@ public class ExamService {
     private final ExamAttemptRepository attemptRepository;
     private final ExamMarkRepository markRepository;
     private final ExamExplanationRepository explanationRepository;
+    private final ExamProgressRepository progressRepository;
     private final ObjectMapper json;
     private final FolderService folderService;
 
     public ExamService(ExamRepository examRepository, ExamAttemptRepository attemptRepository,
                        ExamMarkRepository markRepository,
-                       ExamExplanationRepository explanationRepository, ObjectMapper json,
+                       ExamExplanationRepository explanationRepository,
+                       ExamProgressRepository progressRepository, ObjectMapper json,
                        FolderService folderService) {
         this.examRepository = examRepository;
         this.attemptRepository = attemptRepository;
         this.markRepository = markRepository;
         this.explanationRepository = explanationRepository;
+        this.progressRepository = progressRepository;
         this.json = json;
         this.folderService = folderService;
     }
@@ -69,7 +72,7 @@ public class ExamService {
         return new Graded(kept, correct, graded);
     }
 
-    /** 每份卷子带上做过几次、最近一次的成绩、每档难度标了几题。 */
+    /** 每份卷子带上做过几次、最近一次的成绩、每档难度标了几题、做到第几题。 */
     @Transactional(readOnly = true)
     public List<ExamSummary> list(Long userId) {
         Map<Long, List<ExamAttempt>> attempts = attemptRepository
@@ -80,13 +83,18 @@ public class ExamService {
             marks.computeIfAbsent(count.getExamId(), id -> new TreeMap<>())
                     .put(count.getLevel().intValue(), count.getCount().intValue());
         }
+        Map<Long, ExamProgress> progress = progressRepository.findByOwner(userId).stream()
+                .collect(Collectors.toMap(ExamProgress::getExamId, p -> p));
         return examRepository.findByOwnerIdOrderByCreatedAtDesc(userId).stream()
                 .map(exam -> {
                     List<ExamAttempt> mine = attempts.getOrDefault(exam.id(), List.of());
+                    ExamProgress saved = progress.get(exam.id());
                     return new ExamSummary(exam.id(), exam.title(), exam.questionCount(),
                             exam.gradedCount(), exam.createdAt(), exam.folderId(), mine.size(),
                             mine.isEmpty() ? null : attemptResponse(mine.getFirst()),
-                            marks.getOrDefault(exam.id(), Map.of()));
+                            marks.getOrDefault(exam.id(), Map.of()),
+                            saved == null ? 0 : json.readValue(saved.getAnswers(), ANSWERS).size(),
+                            saved == null ? null : saved.getUpdatedAt());
                 })
                 .toList();
     }
@@ -106,7 +114,8 @@ public class ExamService {
         return response(exam, attemptRepository
                 .findByExamIdAndOwnerIdOrderBySubmittedAtDesc(id, userId).stream()
                 .map(this::attemptResponse)
-                .toList(), marks, explanations);
+                .toList(), marks, explanations,
+                progressRepository.findById(id).map(this::progressResponse).orElse(null));
     }
 
     @Transactional
@@ -136,7 +145,7 @@ public class ExamService {
         int graded = (int) questions.stream().filter(q -> q.answer() != null).count();
         return response(examRepository.save(
                 new Exam(userId, title, body, questions.size(), graded, Instant.now(), folderId)),
-                List.of(), Map.of(), Map.of());
+                List.of(), Map.of(), Map.of(), null);
     }
 
     /** 把这些卷子挪进某个集；folderId 为空是退回未归档。返回真正挪了几份。 */
@@ -169,6 +178,37 @@ public class ExamService {
                 examId, userId, json.writeValueAsString(graded.answers()),
                 graded.correct(), graded.graded(), elapsedSeconds, Instant.now()));
         return attemptResponse(attempt);
+    }
+
+    /** 这份卷子的进度，没存过是 null。 */
+    @Transactional(readOnly = true)
+    public ProgressResponse progress(Long userId, Long examId) {
+        load(userId, examId);
+        return progressRepository.findById(examId).map(this::progressResponse).orElse(null);
+    }
+
+    /**
+     * 存做到一半的进度，存过的就改成新的。卷子里没有的题号、超出范围的选项不收；
+     * 记下的成绩不是这份卷子的就当没有。重做是存一份空的，不删：留着时间好比新旧。
+     */
+    @Transactional
+    public ProgressResponse saveProgress(Long userId, Long examId, Map<Integer, Integer> answers,
+                                         int elapsedSeconds, Long recordedAttemptId) {
+        Exam exam = load(userId, examId);
+        String kept = json.writeValueAsString(grade(content(exam), answers).answers());
+        Long recorded = recordedAttemptId == null ? null : attemptRepository.findById(recordedAttemptId)
+                .filter(a -> a.getExamId().equals(examId) && a.getOwnerId().equals(userId))
+                .map(ExamAttempt::getId)
+                .orElse(null);
+        Instant now = Instant.now();
+        ExamProgress progress = progressRepository.findById(examId)
+                .map(saved -> {
+                    saved.update(kept, elapsedSeconds, recorded, now);
+                    return saved;
+                })
+                .orElseGet(() -> progressRepository.save(
+                        new ExamProgress(examId, kept, elapsedSeconds, recorded, now)));
+        return progressResponse(progress);
     }
 
     /** 给一道题标难度，标过的就改成新的。 */
@@ -208,11 +248,17 @@ public class ExamService {
 
     private ExamResponse response(Exam exam, List<AttemptResponse> attempts,
                                   Map<Integer, Integer> marks,
-                                  Map<Integer, QuestionExplanation> explanations) {
+                                  Map<Integer, QuestionExplanation> explanations,
+                                  ProgressResponse progress) {
         return new ExamResponse(exam.getId(), exam.getTitle(), content(exam),
                 exam.getQuestionCount(), exam.getGradedCount(), exam.getCreatedAt(), exam.getFolderId(),
                 attempts, marks,
-                explanations);
+                explanations, progress);
+    }
+
+    private ProgressResponse progressResponse(ExamProgress progress) {
+        return new ProgressResponse(json.readValue(progress.getAnswers(), ANSWERS),
+                progress.getElapsedSeconds(), progress.getRecordedAttemptId(), progress.getUpdatedAt());
     }
 
     private AttemptResponse attemptResponse(ExamAttempt attempt) {

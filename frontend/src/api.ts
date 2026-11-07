@@ -712,6 +712,18 @@ export interface ExamSummary {
   lastAttempt: ExamAttempt | null
   /** 每档难度标了几题：1 简单、2 一般、3 难 → 题数，没标的档不在里面 */
   markCounts: Record<string, number>
+  /** 这一遍做到了几题（哪台设备做的都算），进度什么时候存的；没存过是 0 / null */
+  answeredCount: number
+  progressUpdatedAt: string | null
+}
+
+/** 做到一半的进度，存在后端，换台设备接着做。updatedAt 是后端的时间 */
+export interface ExamProgress {
+  answers: Record<string, number>
+  elapsedSeconds: number
+  /** 这一遍做完记下的成绩，还没做完是 null */
+  recordedAttemptId: number | null
+  updatedAt: string
 }
 
 export interface Exam {
@@ -728,6 +740,8 @@ export interface Exam {
   marks: Record<string, MarkLevel>
   /** 已经生成过的解析：题号 → 解析 */
   explanations: Record<string, QuestionExplanation>
+  /** 这一遍做到哪儿了，没存过是 null */
+  progress: ExamProgress | null
 }
 
 export type MarkLevel = 1 | 2 | 3
@@ -790,6 +804,34 @@ export async function submitExam(
     body: JSON.stringify({ answers, elapsedSeconds }),
   })
   return handle<ExamAttempt>(res)
+}
+
+/** 只取进度：页面切回前台时看看别的设备有没有接着做。没存过是 null。 */
+export async function fetchExamProgress(id: number): Promise<ExamProgress | null> {
+  const res = await apiFetch(`/api/exams/${id}/progress`)
+  if (!res.ok) throw await toError(res, `请求失败：${res.status}`)
+  const body = await res.text()
+  return body ? (JSON.parse(body) as ExamProgress) : null
+}
+
+/**
+ * 存进度，存过的就改掉。keepalive 是页面要关了还得发出去的那一下
+ * （keepalive 的请求体有 64KB 上限，一份卷子的答案远到不了）。
+ */
+export async function saveExamProgress(
+  id: number,
+  answers: Record<number, number>,
+  elapsedSeconds: number,
+  recordedAttemptId: number | null,
+  keepalive = false,
+): Promise<ExamProgress> {
+  const res = await apiFetch(`/api/exams/${id}/progress`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answers, elapsedSeconds, recordedAttemptId }),
+    keepalive,
+  })
+  return handle<ExamProgress>(res)
 }
 
 /** 给一道题标难度；level 为 null 是去掉标记。 */

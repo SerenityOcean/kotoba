@@ -1,6 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { explainQuestion, fetchExam, markQuestion, submitExam } from '../api'
+import {
+  explainQuestion,
+  fetchExam,
+  fetchExamProgress,
+  markQuestion,
+  saveExamProgress,
+  submitExam,
+} from '../api'
 import type { Exam, ExamAttempt, MarkLevel, QuestionExplanation } from '../api'
 import { useAuth } from '../auth-context'
 import ExamText from '../components/ExamText'
@@ -9,7 +16,15 @@ import AnalysisPanel from '../components/AnalysisPanel'
 import { useSelectionAnalysis } from '../selection'
 import type { SelectionAnalysis } from '../selection'
 import { examQuestions, formatClock } from '../exam'
-import { draftKey as keyFor, readDraft, writeDraft } from '../exam-draft'
+import {
+  fromProgress,
+  draftKey as keyFor,
+  localIsNewer,
+  readDraft,
+  sameDraft,
+  writeDraft,
+} from '../exam-draft'
+import type { Draft } from '../exam-draft'
 import type { ExamBlock, ExamPassage, ExamQuestion } from '../exam'
 
 /** 振り仮名开着还是关着。默认关 —— 考场上没有注音 */
@@ -45,6 +60,15 @@ function verdict(question: ExamQuestion, answers: Record<number, number>): Verdi
   return chosen === question.answer ? 'right' : 'wrong'
 }
 
+/** 停手多久把进度存到后端；一直在做的话，用时最多隔这么久跟一次 */
+const SAVE_DELAY = 800
+const SAVE_EVERY = 30_000
+
+/** server 那份给 localIsNewer 比的样子 */
+function stamp(draft: Draft | null) {
+  return draft && { answered: Object.keys(draft.answers).length, updatedAt: draft.updatedAt }
+}
+
 /** 只看哪些题：错题，或者标了某一档难度的 */
 type Filter = 'wrong' | MarkLevel | null
 
@@ -70,13 +94,16 @@ function ExamPaper({ examId }: { examId: number }) {
   const draftKey = keyFor(user?.id, examId)
   const [exam, setExam] = useState<Exam | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [answers, setAnswers] = useState<Record<number, number>>(
-    () => readDraft(draftKey)?.answers ?? {},
-  )
-  const [elapsed, setElapsed] = useState(() => readDraft(draftKey)?.elapsed ?? 0)
-  const [recorded, setRecorded] = useState<number | null>(
-    () => readDraft(draftKey)?.recorded ?? null,
-  )
+  // 答案、用时、记下的成绩：卷子到了以后，从后端的进度和本机草稿里挑新的那份填进来
+  const [answers, setAnswers] = useState<Record<number, number>>({})
+  const [elapsed, setElapsed] = useState(0)
+  const [recorded, setRecorded] = useState<number | null>(null)
+  // 后端手里的那份进度（最后一次存上或取到的），没有是 null；眼下这一遍和它一样就不用再存
+  const saved = useRef<Draft | null>(null)
+  // 眼下这一遍，给定时器、切走页面时那一下用
+  const current = useRef<Draft | null>(null)
+  const saving = useRef(false)
+  const saveAgain = useRef(false)
   const [marks, setMarks] = useState<Record<number, MarkLevel>>({})
   const [filter, setFilter] = useState<Filter>(null)
   const [explanations, setExplanations] = useState<Record<number, QuestionExplanation>>({})
@@ -88,18 +115,32 @@ function ExamPaper({ examId }: { examId: number }) {
   const selection = useSelectionAnalysis()
   const { showPanel } = selection
 
+  // 卷子连同后端的进度一起换上。本机草稿更新就用本机的（随后会存上去），不然用后端的
+  const load = useCallback(
+    (exam: Exam) => {
+      const remote = exam.progress ? fromProgress(exam.progress) : null
+      const local = readDraft(draftKey)
+      const draft = local && localIsNewer(local, stamp(remote)) ? local : remote
+      saved.current = remote
+      setExam(exam)
+      setMarks(exam.marks)
+      setExplanations(exam.explanations)
+      setAnswers(draft?.answers ?? {})
+      setElapsed(draft?.elapsed ?? 0)
+      setRecorded(draft?.recorded ?? null)
+    },
+    [draftKey],
+  )
+
   useEffect(() => {
     window.scrollTo(0, 0)
     fetchExam(examId)
-      .then((exam) => {
-        setExam(exam)
-        setMarks(exam.marks)
-        setExplanations(exam.explanations)
-      })
+      .then(load)
       .catch((e) => setError(e instanceof Error ? e.message : '加载失败'))
-  }, [examId])
+  }, [examId, load])
 
-  const practising = exam !== null && recorded === null
+  const loaded = exam !== null
+  const practising = loaded && recorded === null
 
   // 做完之前、页面在前台时走表：切去别的标签页查东西不算时间。表不显示，只记进成绩
   useEffect(() => {
@@ -110,11 +151,100 @@ function ExamPaper({ examId }: { examId: number }) {
     return () => clearInterval(timer)
   }, [practising])
 
-  // 一题没做就不留草稿：只是点开看一眼，下次进来计时从零开始
+  // 一题没做就不记用时：只是点开看一眼，下次进来计时从零开始。
+  // 和后端那份一样就沿用它的时间，有变化才算是这台设备上刚改的
   useEffect(() => {
     if (!exam) return
-    writeDraft(draftKey, Object.keys(answers).length > 0 ? { answers, elapsed, recorded } : null)
+    const empty = Object.keys(answers).length === 0
+    const next: Draft = empty
+      ? { answers: {}, elapsed: 0, recorded: null, updatedAt: 0 }
+      : { answers, elapsed, recorded, updatedAt: 0 }
+    const same = [saved.current, current.current].find((d) => sameDraft(next, d))
+    next.updatedAt = same?.updatedAt ?? Date.now()
+    current.current = next
+    // 后端也没有的空卷不留草稿
+    writeDraft(draftKey, empty && saved.current === null ? null : next)
   }, [exam, draftKey, answers, elapsed, recorded])
+
+  // 存到后端。和后端那份一样就不发；正在存就等这次回来再存一遍最新的。
+  // keepalive 是切走、关页面时那一下，不排队，直接发
+  const save = useCallback(
+    async (keepalive = false) => {
+      const draft = current.current
+      if (draft === null || sameDraft(draft, saved.current)) return
+      if (saved.current === null && Object.keys(draft.answers).length === 0) return
+      if (saving.current && !keepalive) {
+        saveAgain.current = true
+        return
+      }
+      if (!keepalive) saving.current = true
+      try {
+        const progress = await saveExamProgress(
+          examId,
+          draft.answers,
+          draft.elapsed,
+          draft.recorded,
+          keepalive,
+        )
+        // 记成发出去的这份、后端的时间：下次打开不会当成本机更新又存一遍
+        saved.current = { ...draft, updatedAt: Date.parse(progress.updatedAt) }
+        if (current.current === draft) {
+          current.current = saved.current
+          writeDraft(draftKey, saved.current)
+        }
+      } catch {
+        // 存不上（断网之类）就等下一次，本机草稿还在
+      } finally {
+        if (!keepalive) {
+          saving.current = false
+          if (saveAgain.current) {
+            saveAgain.current = false
+            void save()
+          }
+        }
+      }
+    },
+    [examId, draftKey],
+  )
+
+  // 选了、撤回、记下成绩、重做：停手一下就存
+  useEffect(() => {
+    if (!exam) return
+    const timer = setTimeout(() => void save(), SAVE_DELAY)
+    return () => clearTimeout(timer)
+  }, [exam, answers, recorded, save])
+
+  // 一直在做的话用时隔一阵跟一次；切走、关页面、离开这页时把最新的发出去。
+  // 切回来时看一眼后端：别的设备在这之后接着做过，就换成那边的
+  useEffect(() => {
+    if (!loaded) return
+    const timer = setInterval(() => void save(), SAVE_EVERY)
+    const flush = () => void save(true)
+    const onVisibility = async () => {
+      if (document.visibilityState === 'hidden') {
+        flush()
+        return
+      }
+      try {
+        const progress = await fetchExamProgress(examId)
+        if (!progress) return
+        const remote = fromProgress(progress)
+        if (saved.current && remote.updatedAt <= saved.current.updatedAt) return
+        if (current.current && localIsNewer(current.current, stamp(remote))) return
+        load(await fetchExam(examId))
+      } catch {
+        // 看不了就先接着用这台的
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('pagehide', flush)
+    return () => {
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [loaded, examId, save, load])
 
   const questions = useMemo(() => (exam ? examQuestions(exam.content) : []), [exam])
 

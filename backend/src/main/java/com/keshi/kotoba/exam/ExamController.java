@@ -92,6 +92,21 @@ public class ExamController {
         return examService.submit(user.id(), id, request.answers(), request.elapsedSeconds());
     }
 
+    /** 只要进度：页面切回前台时看一眼别的设备有没有接着做。没存过回空。 */
+    @GetMapping("/{id}/progress")
+    public ProgressResponse progress(@AuthenticationPrincipal AppUserPrincipal user, @PathVariable Long id) {
+        return examService.progress(user.id(), id);
+    }
+
+    /** 做到一半的进度，换台设备接着做。重做也是存进来，答案是空的。 */
+    @PutMapping("/{id}/progress")
+    public ProgressResponse saveProgress(@AuthenticationPrincipal AppUserPrincipal user,
+                                         @PathVariable Long id,
+                                         @Valid @RequestBody ProgressRequest request) {
+        return examService.saveProgress(user.id(), id, request.answers(), request.elapsedSeconds(),
+                request.recordedAttemptId());
+    }
+
     @PutMapping("/{id}/marks/{number}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void mark(@AuthenticationPrincipal AppUserPrincipal user, @PathVariable Long id,

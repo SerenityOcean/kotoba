@@ -3,7 +3,10 @@ package com.keshi.kotoba.exam;
 import java.time.Instant;
 import java.util.Map;
 
-/** 列表里的一份：所在的集（空是未归档），做完过几遍，最近一次的成绩（没做完过是 null），每档难度标了几题（1–3 → 题数）。 */
+/**
+ * 列表里的一份：所在的集（空是未归档），做完过几遍，最近一次的成绩（没做完过是 null），
+ * 每档难度标了几题（1–3 → 题数），这一遍做到了几题、进度什么时候存的（没存过是 null）。
+ */
 public record ExamSummary(
         Long id,
         String title,
@@ -13,6 +16,8 @@ public record ExamSummary(
         Long folderId,
         int attemptCount,
         AttemptResponse lastAttempt,
-        Map<Integer, Integer> markCounts
+        Map<Integer, Integer> markCounts,
+        int answeredCount,
+        Instant progressUpdatedAt
 ) {
 }

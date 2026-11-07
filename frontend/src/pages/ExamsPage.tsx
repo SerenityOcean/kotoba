@@ -7,7 +7,7 @@ import ExamImport from '../components/ExamImport'
 import FolderBar from '../components/FolderBar'
 import MoveBar from '../components/MoveBar'
 import { Chip } from '../components/chips'
-import { draftKey, readDraft } from '../exam-draft'
+import { draftKey, localIsNewer, readDraft } from '../exam-draft'
 
 /** 「2015年7月」排在「2015年12月」前面：数字按大小比，不按字符 */
 const byTitle = new Intl.Collator('zh-CN', { numeric: true })
@@ -335,12 +335,17 @@ export default function ExamsPage() {
 }
 
 /**
- * 标题下面那一行：做到第几题（这台设备上的进度）、各档难度标了几题、做完过几遍。
- * 一样都没有就是「还没开始」。
+ * 标题下面那一行：做到第几题、各档难度标了几题、做完过几遍。一样都没有就是「还没开始」。
+ * 做到第几题看后端存的进度；本机草稿更新（还没存上去）就看本机的。
  */
 function progress(exam: ExamSummary, draft: ReturnType<typeof readDraft>): string {
   const parts: string[] = []
-  const answered = draft ? Object.keys(draft.answers).length : 0
+  const server =
+    exam.progressUpdatedAt === null
+      ? null
+      : { answered: exam.answeredCount, updatedAt: Date.parse(exam.progressUpdatedAt) }
+  const answered =
+    draft && localIsNewer(draft, server) ? Object.keys(draft.answers).length : exam.answeredCount
   if (answered > 0) parts.push(`做到 ${answered} / ${exam.questionCount}`)
   const marked = LEVEL_NAMES.flatMap(([level, name]) =>
     exam.markCounts[level] ? [`${name} ${exam.markCounts[level]}`] : [],
