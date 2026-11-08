@@ -45,9 +45,12 @@ public class ExplanationService {
             6. 给了正确答案就以它为准，不要另选。没给答案的，自己判断，
                在 reason 开头写明「讲义没给答案，按题意应选 X」。
             7. 吃不准的地方不要编。
-            8. example 用正确选项那个词或句型另造一个例句，让读者看到它在别的句子里怎么用；
-               exampleTranslation 是它的中文翻译。例句要自然、是 N2 学习者会碰到的场景，
-               不要照搬题目原句。读解题的选项是内容概括，两项都写空串。
+            8. 每个选项的 example 用这个选项的词或句型另造一个例句，让读者看到它在别的句子里
+               怎么用；exampleTranslation 是它的中文翻译。错误选项也要造 —— 读者要分清的
+               正是这几个词各自怎么用。读音题的错误选项对应别的词时（例如「にごって」是
+               「濁って」），用那个词、写成汉字造句。选项根本不是真实存在的词或读法、
+               或者是读解题的内容概括，造不出例句，两项都写空串。
+               例句要自然、是 N2 学习者会碰到的场景，不要照搬题目原句，几个例句不要雷同。
             9. JSON 的括号要成对：每个对象写完先用 } 收口，再用 ] 收数组。
             """;
 
@@ -77,8 +80,8 @@ public class ExplanationService {
         ExamContent content = examService.content(userId, examId);
         Optional<ExamExplanation> row = repository.findByExamIdAndQuestionNumber(examId, number);
         Optional<QuestionExplanation> saved = row.map(this::read);
-        // 加例句之前存下的解析没有例句：再点一次就重新生成，换掉旧的
-        if (saved.isPresent() && !saved.get().predatesExample()) {
+        // 选项上还没有例句的旧解析：再点一次就重新生成，换掉旧的
+        if (saved.isPresent() && !saved.get().predatesChoiceExamples()) {
             return saved.get();
         }
 
@@ -169,22 +172,31 @@ public class ExplanationService {
         return RUBY.matcher(text).replaceAll("$1");
     }
 
-    /** 选项按序号排好；null 换成空，界面不用防；例句在本地注上音。 */
+    /** 选项按序号排好；null 换成空串，界面不用防；每个选项的例句在本地注上音。 */
     static QuestionExplanation tidy(QuestionExplanation explanation) {
         if (explanation == null) {
-            return new QuestionExplanation("", "", List.of(), "", "");
+            return new QuestionExplanation("", "", List.of());
         }
         List<QuestionExplanation.Choice> choices = explanation.choices() == null
                 ? List.of()
                 : explanation.choices().stream()
                         .sorted(Comparator.comparingInt(QuestionExplanation.Choice::number))
+                        .map(ExplanationService::tidy)
                         .toList();
         return new QuestionExplanation(
                 explanation.point() == null ? "" : explanation.point(),
                 explanation.reason() == null ? "" : explanation.reason(),
-                choices,
-                explanation.example() == null || explanation.example().isBlank() ? ""
-                        : JapaneseReading.annotate(FuriganaNotation.bracketize(explanation.example().strip())),
-                explanation.exampleTranslation() == null ? "" : explanation.exampleTranslation().strip());
+                choices);
+    }
+
+    private static QuestionExplanation.Choice tidy(QuestionExplanation.Choice choice) {
+        String example = choice.example() == null ? "" : choice.example().strip();
+        return new QuestionExplanation.Choice(
+                choice.number(),
+                choice.meaning() == null ? "" : choice.meaning(),
+                choice.verdict() == null ? "" : choice.verdict(),
+                example.isEmpty() ? "" : JapaneseReading.annotate(FuriganaNotation.bracketize(example)),
+                example.isEmpty() || choice.exampleTranslation() == null ? ""
+                        : choice.exampleTranslation().strip());
     }
 }

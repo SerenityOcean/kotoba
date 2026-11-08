@@ -35,16 +35,21 @@ class ExplanationServiceTest {
     }
 
     @Test
-    @DisplayName("模型回的空字段收成空串，选项按序号排")
+    @DisplayName("模型回的空字段收成空串，选项按序号排，每个选项的例句各自注音")
     void tidiesModelOutput() {
         QuestionExplanation tidy = ExplanationService.tidy(new QuestionExplanation(null, "因为", List.of(
-                new QuestionExplanation.Choice(3, "三", ""),
-                new QuestionExplanation.Choice(1, "一", "")), null, null));
+                new QuestionExplanation.Choice(3, "三", null, "  濁った水  ", " 浑水 "),
+                new QuestionExplanation.Choice(1, "一", "", null, "没有例句却有翻译"))));
 
         assertEquals("", tidy.point());
         assertEquals(List.of(1, 3), tidy.choices().stream().map(QuestionExplanation.Choice::number).toList());
-        assertEquals("", tidy.example());
-        assertEquals("", tidy.exampleTranslation());
-        assertEquals(List.of(), ExplanationService.tidy(new QuestionExplanation("", "", null, "", "")).choices());
+        QuestionExplanation.Choice first = tidy.choices().get(0);
+        assertEquals("", first.example());
+        assertEquals("", first.exampleTranslation(), "没有例句，翻译也不留");
+        QuestionExplanation.Choice third = tidy.choices().get(1);
+        assertEquals("", third.verdict());
+        assertEquals("濁[にご]った水[みず]", third.example());
+        assertEquals("浑水", third.exampleTranslation());
+        assertEquals(List.of(), ExplanationService.tidy(new QuestionExplanation("", "", null)).choices());
     }
 }

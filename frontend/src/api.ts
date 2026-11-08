@@ -746,12 +746,21 @@ export interface Exam {
 
 export type MarkLevel = 1 | 2 | 3
 
-/** 一道题的解析：考点、为什么选正解、每个选项的意思和对错、正解的例句 */
+/** 一道题的解析：考点、为什么选正解、每个选项的意思、对错和例句 */
 export interface QuestionExplanation {
   point: string
   reason: string
-  choices: { number: number; meaning: string; verdict: string }[]
-  /** 用正解另造的例句，方括号注音；读解题是空串。加例句之前生成的解析没有这一项 */
+  choices: ExplanationChoice[]
+}
+
+export interface ExplanationChoice {
+  number: number
+  meaning: string
+  verdict: string
+  /**
+   * 用这个选项另造的例句，方括号注音，错误选项也有；造不出的（不存在的读法、
+   * 读解题的内容概括）是空串。每个选项都带例句之前生成的解析没有这一项
+   */
   example?: string | null
   exampleTranslation?: string | null
 }

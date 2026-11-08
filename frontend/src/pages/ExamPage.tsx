@@ -8,7 +8,7 @@ import {
   saveExamProgress,
   submitExam,
 } from '../api'
-import type { Exam, ExamAttempt, MarkLevel, QuestionExplanation } from '../api'
+import type { Exam, ExamAttempt, ExplanationChoice, MarkLevel, QuestionExplanation } from '../api'
 import { useAuth } from '../auth-context'
 import ExamText from '../components/ExamText'
 import Furigana from '../components/Furigana'
@@ -325,11 +325,12 @@ function ExamPaper({ examId }: { examId: number }) {
   }
 
   // 生成过的点一下就是展开 / 收起；没生成过的先去要，到了再展开。
-  // 加例句之前生成的（没有 example）展开时重新要一份，要不到就先看旧的
+  // 选项上还没有例句的旧解析，展开时重新要一份，要不到就先看旧的
   async function explain(number: number) {
     if (!exam || explaining.has(number)) return
     const saved = explanations[number]
-    if (saved && (saved.example != null || expanded.has(number))) {
+    const current = saved?.choices.every((c) => c.example != null)
+    if (saved && (current || expanded.has(number))) {
       setExpanded((current) => toggled(current, number, !current.has(number)))
       return
     }
@@ -814,28 +815,35 @@ function ExplanationView({
               <span className="min-w-0">
                 <span>{choice.meaning}</span>
                 {choice.verdict && <span className="block text-hai">{choice.verdict}</span>}
-                {choice.number === answer && <Example explanation={explanation} />}
+                <Example choice={choice} right={choice.number === answer} />
               </span>
             </li>
           )
         })}
       </ol>
-      {answer == null && <Example explanation={explanation} />}
     </div>
   )
 }
 
-/** 正解另造的一个例句和中文翻译，挂在正解那项下面 */
-function Example({ explanation }: { explanation: QuestionExplanation }) {
-  if (!explanation.example) return null
+/**
+ * 这个选项另造的一个例句和中文翻译，挂在它下面。正解那项用蓝底，其余用灰底。
+ * 例句的振り仮名一直显示 —— 卷面的振り仮名开关只管题目，
+ * 例句是拿来学词的，读音不能藏（!important 压过卷面外层的 rt:hidden）
+ */
+function Example({ choice, right }: { choice: ExplanationChoice; right: boolean }) {
+  if (!choice.example) return null
   return (
-    <span className="mt-1.5 block rounded bg-ai/5 px-2.5 py-1.5">
-      <span className="mr-2 text-xs text-ai">例</span>
+    <span
+      className={`mt-1.5 block rounded px-2.5 py-1.5 [&_rt]:[display:ruby-text]! ${
+        right ? 'bg-ai/5' : 'bg-usu/40'
+      }`}
+    >
+      <span className={`mr-2 text-xs ${right ? 'text-ai' : 'text-hai'}`}>例</span>
       <span className="leading-loose">
-        <Furigana text={explanation.example} />
+        <Furigana text={choice.example} />
       </span>
-      {explanation.exampleTranslation && (
-        <span className="block text-hai">{explanation.exampleTranslation}</span>
+      {choice.exampleTranslation && (
+        <span className="block text-hai">{choice.exampleTranslation}</span>
       )}
     </span>
   )
