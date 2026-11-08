@@ -175,6 +175,58 @@ class ExamServiceIntegrationTest {
     }
 
     @Test
+    @DisplayName("写成日语的解析：提醒一句再要一次，要到中文的才存；还是日语就给出去但不存")
+    void retriesExplanationWrittenInJapanese() {
+        long id = examService.create(userId, "卷子", content()).id();
+        QuestionExplanation japanese = new QuestionExplanation("文法：〜こともある",
+                "空所は「小説を読むこと（　）ある」で、前文を受けて「小説を読むこともある」という意味にしたい。",
+                List.of(new QuestionExplanation.Choice(1, "一", "", "", "")));
+        QuestionExplanation chinese = new QuestionExplanation("文法：〜こともある",
+                "前文说并非只看漫画，这里要表达「有时也会读小说」，所以选「こともある」。",
+                List.of(new QuestionExplanation.Choice(1, "一", "", "", "")));
+
+        StubEngine engine = new StubEngine(japanese, chinese);
+        ExplanationService service = new ExplanationService(examService, explanationRepository,
+                StubEngine.provide(engine), quota, json);
+        assertEquals(chinese.reason(), service.explain(userId, id, 55).reason());
+        assertEquals(2, engine.calls);
+        assertTrue(engine.lastText.endsWith(ExplanationService.IN_CHINESE), "第二次要带上提醒");
+        assertEquals(chinese.reason(), examService.find(userId, id).explanations().get(55).reason());
+
+        StubEngine stubborn = new StubEngine(japanese);
+        ExplanationService again = new ExplanationService(examService, explanationRepository,
+                StubEngine.provide(stubborn), quota, json);
+        assertEquals(japanese.reason(), again.explain(userId, id, 56).reason());
+        assertEquals(2, stubborn.calls);
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT count(*) FROM exam_explanation WHERE exam_id = ? AND question_number = 56",
+                Integer.class, id), "还是日语的不存");
+    }
+
+    @Test
+    @DisplayName("之前存下的日语解析：卷子里不带，再要一次就重新生成")
+    void regeneratesSavedJapaneseExplanation() throws Exception {
+        long id = examService.create(userId, "卷子", content()).id();
+        QuestionExplanation japanese = new QuestionExplanation("文法：〜こともある",
+                "空所は「小説を読むこと（　）ある」で、前文を受けて「小説を読むこともある」という意味にしたい。",
+                List.of(new QuestionExplanation.Choice(1, "一", "", "", "")));
+        explanationRepository.save(new ExamExplanation(id, 55, json.writeValueAsString(japanese),
+                "old", Instant.now()));
+        assertEquals(Map.of(), examService.find(userId, id).explanations());
+
+        QuestionExplanation chinese = new QuestionExplanation("文法：〜こともある",
+                "前文说并非只看漫画，这里要表达「有时也会读小说」，所以选「こともある」。",
+                List.of(new QuestionExplanation.Choice(1, "一", "", "", "")));
+        StubEngine engine = new StubEngine(chinese);
+        ExplanationService service = new ExplanationService(examService, explanationRepository,
+                StubEngine.provide(engine), quota, json);
+        assertEquals(chinese.reason(), service.explain(userId, id, 55).reason());
+        assertEquals(1, engine.calls);
+        assertEquals(1, jdbc.queryForObject(
+                "SELECT count(*) FROM exam_explanation WHERE exam_id = ?", Integer.class, id));
+    }
+
+    @Test
     @DisplayName("进度存在后端：换台设备取出来一样；再存是改；列表带做到几题；别人存不了")
     void savesProgress() {
         long id = examService.create(userId, "卷子", content()).id();

@@ -2,22 +2,25 @@ package com.keshi.kotoba.analyze;
 
 import org.springframework.beans.factory.ObjectProvider;
 
-/** 测试用的假引擎：回事先摆好的结果。 */
+/** 测试用的假引擎：按顺序回事先摆好的结果，摆的用完了就一直回最后那个。 */
 public class StubEngine implements AnalysisEngine {
 
-    private final Object result;
+    private final Object[] results;
 
     public String lastPrompt;
     public String lastText;
+    public int calls;
 
-    public StubEngine(Object result) {
-        this.result = result;
+    public StubEngine(Object... results) {
+        this.results = results;
     }
 
     @Override
     public <T> T generate(String systemPrompt, String text, Class<T> type) {
         this.lastPrompt = systemPrompt;
         this.lastText = text;
+        Object result = results[Math.min(calls, results.length - 1)];
+        calls++;
         return type.cast(result);
     }
 

@@ -5,11 +5,14 @@ import com.keshi.kotoba.analyze.AnalysisUnavailableException;
 import com.keshi.kotoba.analyze.AnalyzeQuota;
 import com.keshi.kotoba.text.FuriganaNotation;
 import com.keshi.kotoba.text.JapaneseReading;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -23,12 +26,17 @@ import java.util.regex.Pattern;
 @Service
 public class ExplanationService {
 
+    private static final Logger log = LoggerFactory.getLogger(ExplanationService.class);
+
     /**
      * 提示词的一半在这儿，另一半是 {@link QuestionExplanation} 上的字段说明。
      */
     static final String SYSTEM_PROMPT = """
             你是 JLPT 备考老师，读者是中文母语、在备考 N2 的学习者。用户给你一道真题：
             大题类型、需要时附上本文、题干、四个选项和正确答案。把这道题讲透。
+
+            讲解一律用中文写：point、reason、meaning、verdict 都是中文，哪怕题目和选项全是日语、
+            题型名是日语。日语只在「」里引用，不要用日语写句子。
 
             规则：
             1. point 一句话说清这题考什么。
@@ -39,7 +47,7 @@ public class ExplanationService {
                正确答案那项的 verdict 说它为什么成立。
             4. 题目里 ⟦⟧ 括起来的是原卷画下划线的部分；★ 是排列题要回答的那个空；
                （　）和【数字】是要填的空。
-            5. 全部用中文讲 —— 题目和选项是日语，讲解也必须是中文，不要整段写日语。
+            5. 再说一遍：全部用中文讲 —— 题目和选项是日语，讲解也必须是中文，不要整段写日语。
                引用日语照原样写，需要读音就用括号注在后面，
                例如「行事（ぎょうじ）」，不要用方括号。要加引号用「」，不要用英文双引号。
             6. 给了正确答案就以它为准，不要另选。没给答案的，自己判断，
@@ -53,6 +61,16 @@ public class ExplanationService {
                例句要自然、是 N2 学习者会碰到的场景，不要照搬题目原句，几个例句不要雷同。
             9. JSON 的括号要成对：每个对象写完先用 } 收口，再用 ] 收数组。
             """;
+
+    /** 写成日语时再要一次，补在题目后面的那句话 */
+    static final String IN_CHINESE = "\n\n（上一次你把讲解写成了日语。这次 point、reason、meaning、verdict "
+            + "必须全部用中文写，日语只在「」里引用。）";
+
+    /**
+     * 写成日语了，第一次回得快才再要一次：两次加起来不能超过 nginx 的
+     * proxy_read_timeout（120 秒），第二次最长要等 analyze.openai.timeout-seconds（90 秒）
+     */
+    private static final Duration RETRY_WITHIN = Duration.ofSeconds(30);
 
     /** 卷面里的注音是「行事[ぎょうじ]」，送给模型前摘掉：读音题里注音就是答案 */
     private static final Pattern RUBY = Pattern.compile("([\\u4E00-\\u9FFF々〆ヶ]+)\\[[^\\[\\]]+\\]");
@@ -80,8 +98,8 @@ public class ExplanationService {
         ExamContent content = examService.content(userId, examId);
         Optional<ExamExplanation> row = repository.findByExamIdAndQuestionNumber(examId, number);
         Optional<QuestionExplanation> saved = row.map(this::read);
-        // 选项上还没有例句的旧解析：再点一次就重新生成，换掉旧的
-        if (saved.isPresent() && !saved.get().predatesChoiceExamples()) {
+        // 选项上还没有例句、或者写成了日语的旧解析：再点一次就重新生成，换掉旧的
+        if (saved.isPresent() && !saved.get().predatesChoiceExamples() && !saved.get().writtenInJapanese()) {
             return saved.get();
         }
 
@@ -93,8 +111,19 @@ public class ExplanationService {
         }
         quota.acquire(userId);
 
+        Instant start = Instant.now();
         QuestionExplanation explanation = tidy(
                 engine.generate(SYSTEM_PROMPT, prompt, QuestionExplanation.class));
+        if (explanation.writtenInJapanese()
+                && Duration.between(start, Instant.now()).compareTo(RETRY_WITHIN) < 0) {
+            log.warn("問{} 的解析写成了日语（{}），提醒一句再要一次", number, engine.describe());
+            explanation = tidy(engine.generate(SYSTEM_PROMPT, prompt + IN_CHINESE, QuestionExplanation.class));
+        }
+        if (explanation.writtenInJapanese()) {
+            // 照样给出去，总比什么都没有强；但不存：下次点开重新生成
+            log.warn("問{} 的解析还是日语（{}），这次不存", number, engine.describe());
+            return explanation;
+        }
         String written = json.writeValueAsString(explanation);
         try {
             if (row.isPresent()) {
