@@ -28,6 +28,30 @@
   color-scheme: dark;
 }
 
+/* 应试卷面上涂的重点（highlight.ts 用 CSS Custom Highlight API 画的），四支荧光笔：黄、绿、粉、蓝。
+   颜色写了两遍：--mark-N 给选色的圆点用，::highlight 里直接写值 —— 有的浏览器在 ::highlight
+   里取不到自定义属性。改颜色两处一起改 */
+:root {
+  --mark-1: #f7e59a;
+  --mark-2: #c5e8bd;
+  --mark-3: #f7c6d2;
+  --mark-4: #bcdcf5;
+}
+:root[data-theme="dark"] {
+  --mark-1: #5c4d1d;
+  --mark-2: #2f5230;
+  --mark-3: #63303f;
+  --mark-4: #2b4a66;
+}
+::highlight(exam-mark-1) { background-color: #f7e59a; }
+::highlight(exam-mark-2) { background-color: #c5e8bd; }
+::highlight(exam-mark-3) { background-color: #f7c6d2; }
+::highlight(exam-mark-4) { background-color: #bcdcf5; }
+:root[data-theme="dark"] ::highlight(exam-mark-1) { background-color: #5c4d1d; }
+:root[data-theme="dark"] ::highlight(exam-mark-2) { background-color: #2f5230; }
+:root[data-theme="dark"] ::highlight(exam-mark-3) { background-color: #63303f; }
+:root[data-theme="dark"] ::highlight(exam-mark-4) { background-color: #2b4a66; }
+
 /* 滚过头（回弹）时露出来的是 body，和页面同色 */
 body {
   background-color: var(--color-washi);

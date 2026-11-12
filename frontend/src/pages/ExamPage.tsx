@@ -5,15 +5,25 @@ import {
   fetchExam,
   fetchExamProgress,
   markQuestion,
+  saveExamHighlights,
   saveExamProgress,
   submitExam,
 } from '../api'
-import type { Exam, ExamAttempt, ExplanationChoice, MarkLevel, QuestionExplanation } from '../api'
+import type {
+  Exam,
+  ExamAttempt,
+  ExplanationChoice,
+  HighlightRange,
+  MarkLevel,
+  QuestionExplanation,
+} from '../api'
 import { useAuth } from '../auth-context'
 import ExamText from '../components/ExamText'
 import Furigana from '../components/Furigana'
 import AnalysisPanel from '../components/AnalysisPanel'
+import HighlightPicker from '../components/HighlightPicker'
 import { useSelectionAnalysis } from '../selection'
+import { useHighlights } from '../highlight'
 import type { SelectionAnalysis } from '../selection'
 import { examQuestions, formatClock } from '../exam'
 import {
@@ -114,6 +124,13 @@ function ExamPaper({ examId }: { examId: number }) {
   const [furigana, setFurigana] = useState(readFurigana)
   const selection = useSelectionAnalysis()
   const { showPanel } = selection
+  // 涂重点：⇧⌘S 进出学习模式，模式里选中一段弹出笔。平时界面上没有入口，涂色画在卷面这一层上
+  const paper = useRef<HTMLDivElement>(null)
+  const saveHighlights = useCallback(
+    (changes: Record<string, HighlightRange[]>) => saveExamHighlights(examId, changes),
+    [examId],
+  )
+  const highlighter = useHighlights(paper, exam?.highlights, saveHighlights, setError)
 
   // 卷子连同后端的进度一起换上。本机草稿更新就用本机的（随后会存上去），不然用后端的
   const load = useCallback(
@@ -409,7 +426,7 @@ function ExamPaper({ examId }: { examId: number }) {
 
         {/* 关掉振り仮名要用 display: none —— 只是藏起来的话，读音比汉字长的词
             （学習者 がくしゅうしゃ）汉字之间还会被撑开。行高是固定的，切换时不会上下跳 */}
-        <div className={furigana ? '' : '[&_rt]:hidden'}>
+        <div ref={paper} className={furigana ? '' : '[&_rt]:hidden'}>
           {exam.content.sections.map((section, s) => {
             const passages = section.passages.filter((p) => p.questions.some(matches))
             if (passages.length === 0) return null
@@ -429,6 +446,8 @@ function ExamPaper({ examId }: { examId: number }) {
                 {passages.map((passage, p) => (
                   <PassageView
                     key={p}
+                    // 涂色认的是卷面里的第几篇，不是筛选之后的第几篇
+                    anchor={`b.${s}.${section.passages.indexOf(passage)}`}
                     passage={passage}
                     questions={passage.questions.filter(matches)}
                     answers={answers}
@@ -466,6 +485,7 @@ function ExamPaper({ examId }: { examId: number }) {
       </div>
 
       {showPanel && <AnalysisPanel selection={selection} />}
+      <HighlightPicker highlighter={highlighter} />
     </div>
   )
 }
@@ -553,6 +573,7 @@ function isParagraph(text: string): boolean {
 
 /** 一篇本文：正文，连着的几条注释并成一组，后面跟它的小题（筛选时只有筛中的那几题）。 */
 function PassageView({
+  anchor,
   passage,
   questions,
   answers,
@@ -565,6 +586,8 @@ function PassageView({
   onMark,
   onExplain,
 }: {
+  /** 这篇本文的段落涂色时叫什么，后面接段落序号 */
+  anchor: string
   passage: ExamPassage
   questions: ExamQuestion[]
   answers: Record<number, number>
@@ -601,12 +624,19 @@ function PassageView({
                   <span className="inline-block w-[2.5em] indent-0 font-ui text-xs">
                     {note.mark}
                   </span>
-                  <ExamText text={note.text} />
+                  <span data-hl={`${anchor}.${passage.blocks.indexOf(note)}`}>
+                    <ExamText text={note.text} />
+                  </span>
                 </p>
               ))}
             </div>
           ) : (
-            <Block key={i} block={group} first={i === 0} />
+            <Block
+              key={i}
+              block={group}
+              first={i === 0}
+              anchor={`${anchor}.${passage.blocks.indexOf(group)}`}
+            />
           ),
         )}
       </div>
@@ -632,7 +662,7 @@ function PassageView({
   )
 }
 
-function Block({ block, first }: { block: ExamBlock; first: boolean }) {
+function Block({ block, first, anchor }: { block: ExamBlock; first: boolean; anchor: string }) {
   switch (block.kind) {
     case 'part':
       return (
@@ -644,19 +674,20 @@ function Block({ block, first }: { block: ExamBlock; first: boolean }) {
       )
     case 'intro':
       return (
-        <p className="mb-3 text-base text-hai">
+        <p data-hl={anchor} className="mb-3 text-base text-hai">
           <ExamText text={block.text} />
         </p>
       )
     case 'source':
       return (
-        <p className="mt-1 text-right text-sm text-hai">
+        <p data-hl={anchor} className="mt-1 text-right text-sm text-hai">
           <ExamText text={block.text} />
         </p>
       )
     default:
       return (
         <p
+          data-hl={anchor}
           className={`mt-1.5 ${
             block.text.startsWith('・')
               ? 'pl-[1em] -indent-[1em]'
@@ -709,7 +740,7 @@ function QuestionView({
           問{question.number}
         </span>
         {/* 对话题的题干是好几行 A「…」B「…」 */}
-        <span lang="ja" className="min-w-0 whitespace-pre-line">
+        <span lang="ja" data-hl={`q.${question.number}.s`} className="min-w-0 whitespace-pre-line">
           <ExamText text={question.stem} />
         </span>
       </p>
@@ -720,7 +751,11 @@ function QuestionView({
           className="mt-3 border-l-2 border-usu pl-4 font-mincho text-base leading-[2.1]"
         >
           {question.extra.map((line, i) => (
-            <p key={i} className={line.startsWith('・') ? 'pl-[1em] -indent-[1em]' : ''}>
+            <p
+              key={i}
+              data-hl={`q.${question.number}.e.${i}`}
+              className={line.startsWith('・') ? 'pl-[1em] -indent-[1em]' : ''}
+            >
               <ExamText text={line} />
             </p>
           ))}
@@ -732,6 +767,7 @@ function QuestionView({
           <Choice
             key={i}
             name={`q-${question.number}`}
+            anchor={`q.${question.number}.c.${i + 1}`}
             number={i + 1}
             text={choice}
             chosen={chosen === i + 1}
@@ -774,7 +810,12 @@ function QuestionView({
 
       {explainError && <p className="mt-2 pl-3 text-xs text-shu">{explainError}</p>}
       {explanation && (
-        <ExplanationView explanation={explanation} answer={question.answer} chosen={chosen} />
+        <ExplanationView
+          anchor={`x.${question.number}`}
+          explanation={explanation}
+          answer={question.answer}
+          chosen={chosen}
+        />
       )}
     </section>
   )
@@ -785,18 +826,29 @@ function QuestionView({
  * 正解标蓝、选错的那项标红，和上面选项的颜色对得上。
  */
 function ExplanationView({
+  anchor,
   explanation,
   answer,
   chosen,
 }: {
+  /** 这道题的解析涂色时叫什么，后面接是哪一句 */
+  anchor: string
   explanation: QuestionExplanation
   answer: number | null
   chosen: number | undefined
 }) {
   return (
     <div className="mt-3 ml-3 border-l-2 border-ai/40 pl-4 text-sm leading-relaxed">
-      {explanation.point && <p className="text-xs tracking-wider text-hai">{explanation.point}</p>}
-      {explanation.reason && <p className="mt-1.5">{explanation.reason}</p>}
+      {explanation.point && (
+        <p data-hl={`${anchor}.p`} className="text-xs tracking-wider text-hai">
+          {explanation.point}
+        </p>
+      )}
+      {explanation.reason && (
+        <p data-hl={`${anchor}.r`} className="mt-1.5">
+          {explanation.reason}
+        </p>
+      )}
       <ol className="mt-3 space-y-2.5">
         {explanation.choices.map((choice) => {
           const tone =
@@ -813,9 +865,17 @@ function ExplanationView({
                 {choice.number}
               </span>
               <span className="min-w-0">
-                <span>{choice.meaning}</span>
-                {choice.verdict && <span className="block text-hai">{choice.verdict}</span>}
-                <Example choice={choice} right={choice.number === answer} />
+                <span data-hl={`${anchor}.${choice.number}.m`}>{choice.meaning}</span>
+                {choice.verdict && (
+                  <span data-hl={`${anchor}.${choice.number}.v`} className="block text-hai">
+                    {choice.verdict}
+                  </span>
+                )}
+                <Example
+                  anchor={`${anchor}.${choice.number}`}
+                  choice={choice}
+                  right={choice.number === answer}
+                />
               </span>
             </li>
           )
@@ -830,7 +890,15 @@ function ExplanationView({
  * 例句的振り仮名一直显示 —— 卷面的振り仮名开关只管题目，
  * 例句是拿来学词的，读音不能藏（!important 压过卷面外层的 rt:hidden）
  */
-function Example({ choice, right }: { choice: ExplanationChoice; right: boolean }) {
+function Example({
+  anchor,
+  choice,
+  right,
+}: {
+  anchor: string
+  choice: ExplanationChoice
+  right: boolean
+}) {
   if (!choice.example) return null
   return (
     <span
@@ -839,11 +907,13 @@ function Example({ choice, right }: { choice: ExplanationChoice; right: boolean 
       }`}
     >
       <span className={`mr-2 text-xs ${right ? 'text-ai' : 'text-hai'}`}>例</span>
-      <span className="leading-loose">
+      <span data-hl={`${anchor}.e`} className="leading-loose">
         <Furigana text={choice.example} />
       </span>
       {choice.exampleTranslation && (
-        <span className="block text-hai">{choice.exampleTranslation}</span>
+        <span data-hl={`${anchor}.t`} className="block text-hai">
+          {choice.exampleTranslation}
+        </span>
       )}
     </span>
   )
@@ -859,6 +929,7 @@ function toggled(set: ReadonlySet<number>, value: number, on: boolean): Readonly
 
 function Choice({
   name,
+  anchor,
   number,
   text,
   chosen,
@@ -867,6 +938,8 @@ function Choice({
   onChoose,
 }: {
   name: string
+  /** 这个选项涂色时叫什么 */
+  anchor: string
   number: number
   text: string
   chosen: boolean
@@ -920,7 +993,9 @@ function Choice({
         lang="ja"
         className={`min-w-0 font-mincho text-base leading-[2.1] sm:text-[1.0625rem] ${tone}`}
       >
-        <ExamText text={text} />
+        <span data-hl={anchor}>
+          <ExamText text={text} />
+        </span>
         {isAnswer && <span className="ml-2 font-ui text-xs">正解</span>}
         {wrong && (
           <span lang="zh-CN" className="ml-2 font-ui text-xs">

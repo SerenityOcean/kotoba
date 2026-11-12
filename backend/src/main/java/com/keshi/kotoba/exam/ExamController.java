@@ -29,7 +29,8 @@ import java.util.List;
 
 /**
  * 应试：导入的读解真题。卷子在前端解析、注好音再提交；判分在这边，
- * 按存下的答案算，成绩记录和分数一起存。每道题还能自己标个难度、让模型写解析。
+ * 按存下的答案算，成绩记录和分数一起存。每道题还能自己标个难度、让模型写解析，
+ * 卷面上的字能涂重点。
  */
 @RestController
 @RequestMapping("/api/exams")
@@ -119,6 +120,14 @@ public class ExamController {
     public void unmark(@AuthenticationPrincipal AppUserPrincipal user, @PathVariable Long id,
                        @PathVariable int number) {
         examService.unmark(user.id(), id, number);
+    }
+
+    /** 涂重点：只送改了的那几段文字，各自现在涂着哪几截。 */
+    @PutMapping("/{id}/highlights")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void highlight(@AuthenticationPrincipal AppUserPrincipal user, @PathVariable Long id,
+                          @Valid @RequestBody HighlightRequest request) {
+        examService.highlight(user.id(), id, request.highlights());
     }
 
     /** 一道题的解析：生成过的直接给，没有的现调模型，要十几秒。 */

@@ -25,24 +25,33 @@ public class ExamService {
     private static final TypeReference<Map<Integer, Integer>> ANSWERS = new TypeReference<>() {
     };
 
+    private static final TypeReference<List<HighlightRange>> RANGES = new TypeReference<>() {
+    };
+
+    /** 一份卷子最多涂这么多段。整份卷子的段落、题干、选项加起来也就一千来段 */
+    static final int MAX_HIGHLIGHTED = 3000;
+
     private final ExamRepository examRepository;
     private final ExamAttemptRepository attemptRepository;
     private final ExamMarkRepository markRepository;
     private final ExamExplanationRepository explanationRepository;
     private final ExamProgressRepository progressRepository;
+    private final ExamHighlightRepository highlightRepository;
     private final ObjectMapper json;
     private final FolderService folderService;
 
     public ExamService(ExamRepository examRepository, ExamAttemptRepository attemptRepository,
                        ExamMarkRepository markRepository,
                        ExamExplanationRepository explanationRepository,
-                       ExamProgressRepository progressRepository, ObjectMapper json,
+                       ExamProgressRepository progressRepository,
+                       ExamHighlightRepository highlightRepository, ObjectMapper json,
                        FolderService folderService) {
         this.examRepository = examRepository;
         this.attemptRepository = attemptRepository;
         this.markRepository = markRepository;
         this.explanationRepository = explanationRepository;
         this.progressRepository = progressRepository;
+        this.highlightRepository = highlightRepository;
         this.json = json;
         this.folderService = folderService;
     }
@@ -118,10 +127,14 @@ public class ExamService {
                         ChoiceExamples.prune(content, row.getQuestionNumber(), explanation));
             }
         }
+        Map<String, List<HighlightRange>> highlights = new TreeMap<>();
+        for (ExamHighlight row : highlightRepository.findByExamId(id)) {
+            highlights.put(row.getAnchor(), json.readValue(row.getRanges(), RANGES));
+        }
         return response(exam, attemptRepository
                 .findByExamIdAndOwnerIdOrderBySubmittedAtDesc(id, userId).stream()
                 .map(this::attemptResponse)
-                .toList(), marks, explanations,
+                .toList(), marks, explanations, highlights,
                 progressRepository.findById(id).map(this::progressResponse).orElse(null));
     }
 
@@ -152,7 +165,7 @@ public class ExamService {
         int graded = (int) questions.stream().filter(q -> q.answer() != null).count();
         return response(examRepository.save(
                 new Exam(userId, title, body, questions.size(), graded, Instant.now(), folderId)),
-                List.of(), Map.of(), Map.of(), null);
+                List.of(), Map.of(), Map.of(), Map.of(), null);
     }
 
     /** 把这些卷子挪进某个集；folderId 为空是退回未归档。返回真正挪了几份。 */
@@ -218,6 +231,37 @@ public class ExamService {
         return progressResponse(progress);
     }
 
+    /**
+     * 存涂的重点：提到的每段文字换成新的几截，一截都不剩的删掉，没提到的段不动。
+     * 段的名字是前端起的，这边不对卷面 —— 对不上的前端自己不涂。
+     */
+    @Transactional
+    public void highlight(Long userId, Long examId, Map<String, List<HighlightRange>> changes) {
+        load(userId, examId);
+        Map<String, ExamHighlight> saved = highlightRepository
+                .findByExamIdAndAnchorIn(examId, changes.keySet()).stream()
+                .collect(Collectors.toMap(ExamHighlight::getAnchor, row -> row));
+        long added = changes.entrySet().stream()
+                .filter(change -> !change.getValue().isEmpty() && !saved.containsKey(change.getKey()))
+                .count();
+        if (added > 0 && highlightRepository.countByExamId(examId) + added > MAX_HIGHLIGHTED) {
+            throw new InvalidExamException("这份卷子涂的地方太多了");
+        }
+        Instant now = Instant.now();
+        changes.forEach((anchor, ranges) -> {
+            ExamHighlight row = saved.get(anchor);
+            if (ranges.isEmpty()) {
+                if (row != null) {
+                    highlightRepository.delete(row);
+                }
+            } else if (row != null) {
+                row.replace(json.writeValueAsString(ranges), now);
+            } else {
+                highlightRepository.save(new ExamHighlight(examId, anchor, json.writeValueAsString(ranges), now));
+            }
+        });
+    }
+
     /** 给一道题标难度，标过的就改成新的。 */
     @Transactional
     public void mark(Long userId, Long examId, int number, int level) {
@@ -256,11 +300,12 @@ public class ExamService {
     private ExamResponse response(Exam exam, List<AttemptResponse> attempts,
                                   Map<Integer, Integer> marks,
                                   Map<Integer, QuestionExplanation> explanations,
+                                  Map<String, List<HighlightRange>> highlights,
                                   ProgressResponse progress) {
         return new ExamResponse(exam.getId(), exam.getTitle(), content(exam),
                 exam.getQuestionCount(), exam.getGradedCount(), exam.getCreatedAt(), exam.getFolderId(),
                 attempts, marks,
-                explanations, progress);
+                explanations, highlights, progress);
     }
 
     private ProgressResponse progressResponse(ExamProgress progress) {

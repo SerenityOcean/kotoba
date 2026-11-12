@@ -740,11 +740,27 @@ export interface Exam {
   marks: Record<string, MarkLevel>
   /** 已经生成过的解析：题号 → 解析 */
   explanations: Record<string, QuestionExplanation>
+  /** 卷面上涂的重点：哪段文字 → 涂了哪几截。没涂的段不在里面 */
+  highlights: Record<string, HighlightRange[]>
   /** 这一遍做到哪儿了，没存过是 null */
   progress: ExamProgress | null
 }
 
 export type MarkLevel = 1 | 2 | 3
+
+/** 涂重点的几支笔：1 黄、2 绿、3 粉、4 蓝 */
+export type HighlightColor = 1 | 2 | 3 | 4
+
+/**
+ * 一段文字里涂了的一截：从第 start 个字到第 end 个字之前，按去掉振り仮名的文字数。
+ * text 是涂上的那几个字，文字变了拿它对不上就不涂。
+ */
+export interface HighlightRange {
+  start: number
+  end: number
+  text: string
+  color: HighlightColor
+}
 
 /** 一道题的解析：考点、为什么选正解、每个选项的意思、对错和例句 */
 export interface QuestionExplanation {
@@ -841,6 +857,21 @@ export async function saveExamProgress(
     keepalive,
   })
   return handle<ExamProgress>(res)
+}
+
+/** 存涂的重点：只送改了的那几段文字，各自现在涂着哪几截；空的是这段不涂了。 */
+export async function saveExamHighlights(
+  id: number,
+  highlights: Record<string, HighlightRange[]>,
+): Promise<void> {
+  const res = await apiFetch(`/api/exams/${id}/highlights`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ highlights }),
+  })
+  if (!res.ok) {
+    throw await toError(res, `涂色没存上：${res.status}`)
+  }
 }
 
 /** 给一道题标难度；level 为 null 是去掉标记。 */

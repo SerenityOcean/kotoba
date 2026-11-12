@@ -7,6 +7,7 @@ import java.util.Map;
 /**
  * 一份卷子，连卷面、历次成绩（最近的在前）、每道题标的难度（题号 → 1–3）
  * 和已经生成过的解析（题号 → 解析）。没标、没生成的题不在里面。
+ * highlights 是卷面上涂的重点（哪段文字 → 涂了哪几截），没涂的段不在里面。
  * progress 是这一遍做到哪儿了，哪台设备做的都算；没存过是 null。
  */
 public record ExamResponse(
@@ -20,6 +21,7 @@ public record ExamResponse(
         List<AttemptResponse> attempts,
         Map<Integer, Integer> marks,
         Map<Integer, QuestionExplanation> explanations,
+        Map<String, List<HighlightRange>> highlights,
         ProgressResponse progress
 ) {
 }

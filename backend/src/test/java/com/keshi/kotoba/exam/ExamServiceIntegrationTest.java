@@ -127,6 +127,31 @@ class ExamServiceIntegrationTest {
     }
 
     @Test
+    @DisplayName("涂的重点按段存：提到的段换成新的，空的删掉，没提到的不动；重做、别人都碰不到")
+    void savesHighlightsPerAnchor() {
+        long id = examService.create(userId, "卷子", content()).id();
+        assertEquals(Map.of(), examService.find(userId, id).highlights());
+
+        List<HighlightRange> stem = List.of(new HighlightRange(0, 5, "そんな楽器", 1));
+        List<HighlightRange> block = List.of(new HighlightRange(2, 4, "楽器", 2), new HighlightRange(6, 9, "そろっ", 4));
+        examService.highlight(userId, id, Map.of("q.55.s", stem, "b.0.0.0", block));
+        assertEquals(Map.of("q.55.s", stem, "b.0.0.0", block), examService.find(userId, id).highlights());
+
+        List<HighlightRange> wider = List.of(new HighlightRange(0, 9, "そんな楽器がそろっ", 3));
+        examService.highlight(userId, id, Map.of("b.0.0.0", wider));
+        assertEquals(Map.of("q.55.s", stem, "b.0.0.0", wider), examService.find(userId, id).highlights());
+
+        examService.highlight(userId, id, Map.of("q.55.s", List.of(), "q.56.s", List.of()));
+        assertEquals(Map.of("b.0.0.0", wider), examService.find(userId, id).highlights());
+
+        examService.saveProgress(userId, id, Map.of(), 0, null);
+        assertEquals(Map.of("b.0.0.0", wider), examService.find(userId, id).highlights(), "重做一遍还在");
+
+        long other = createUser();
+        assertThrows(ExamNotFoundException.class, () -> examService.highlight(other, id, Map.of("q.55.s", stem)));
+    }
+
+    @Test
     @DisplayName("解析第一次调模型、存下；第二次直接读存的，卷子里也带着")
     void explainsOnceAndCaches() {
         long id = examService.create(userId, "卷子", content("文脈規定")).id();
