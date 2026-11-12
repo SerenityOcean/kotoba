@@ -53,11 +53,17 @@ public class ExplanationService {
             6. 给了正确答案就以它为准，不要另选。没给答案的，自己判断，
                在 reason 开头写明「讲义没给答案，按题意应选 X」。
             7. 吃不准的地方不要编。
-            8. 每个选项的 example 用这个选项的词或句型另造一个例句，让读者看到它在别的句子里
-               怎么用；exampleTranslation 是它的中文翻译。错误选项也要造 —— 读者要分清的
-               正是这几个词各自怎么用。读音题的错误选项对应别的词时（例如「にごって」是
-               「濁って」），用那个词、写成汉字造句。选项根本不是真实存在的词或读法、
-               或者是读解题的内容概括，造不出例句，两项都写空串。
+            8. example 不是每个选项都要有，不要为了凑数硬造。选项是真实存在的词或句型、
+               读者值得看一眼它在别的句子里怎么用，才用它另造一个例句，exampleTranslation
+               是它的中文翻译；错误选项只要是真词也造 —— 读者要分清的正是这几个词各自怎么用。
+               下面这些 example 和 exampleTranslation 都写空串：
+               · 读解题：选项是对本文内容的概括，不是要学的词；
+               · 选项不是真实存在的词或读法：读音题里把一个字换了读法凑出来的干扰项
+                 （「省略」的「しょうかく」「しょうらく」），哪怕碰巧和别的词同音也不造；
+                 汉字表记题里凑出来的假词（「困乱」）；
+               · 题目末尾写了「例句：……」的，照那句办。
+               读音题的错误选项本身是另一个真词时（例如「湿って」那题里的「にごって」是
+               「濁って」），用那个词、写成汉字造句。
                例句要自然、是 N2 学习者会碰到的场景，不要照搬题目原句，几个例句不要雷同。
             9. JSON 的括号要成对：每个对象写完先用 } 收口，再用 ] 收数组。
             """;
@@ -65,6 +71,14 @@ public class ExplanationService {
     /** 写成日语时再要一次，补在题目后面的那句话 */
     static final String IN_CHINESE = "\n\n（上一次你把讲解写成了日语。这次 point、reason、meaning、verdict "
             + "必须全部用中文写，日语只在「」里引用。）";
+
+    /** 读解题补在题目后面的那句话：选项是内容概括，不造例句 */
+    static final String NO_EXAMPLES = "\n\n例句：这是读解题，选项是对本文的概括。"
+            + "所有选项的 example 和 exampleTranslation 都写空串。";
+
+    /** 熟语的读音题补在题目后面的那句话：错误选项是凑出来的读法，只有正确答案造例句 */
+    static final String EXAMPLE_FOR_ANSWER_ONLY = "\n\n例句：错误选项是换了读法凑出来的，不是词。"
+            + "只给正确选项造例句，其余选项的 example 和 exampleTranslation 都写空串。";
 
     /**
      * 写成日语了，第一次回得快才再要一次：两次加起来不能超过 nginx 的
@@ -100,7 +114,7 @@ public class ExplanationService {
         Optional<QuestionExplanation> saved = row.map(this::read);
         // 选项上还没有例句、或者写成了日语的旧解析：再点一次就重新生成，换掉旧的
         if (saved.isPresent() && !saved.get().predatesChoiceExamples() && !saved.get().writtenInJapanese()) {
-            return saved.get();
+            return ChoiceExamples.prune(content, number, saved.get());
         }
 
         String prompt = describe(content, number)
@@ -119,6 +133,8 @@ public class ExplanationService {
             log.warn("問{} 的解析写成了日语（{}），提醒一句再要一次", number, engine.describe());
             explanation = tidy(engine.generate(SYSTEM_PROMPT, prompt + IN_CHINESE, QuestionExplanation.class));
         }
+        // 这道题不该有的例句，模型硬凑了也摘掉，存下的就是摘过的
+        explanation = ChoiceExamples.prune(content, number, explanation);
         if (explanation.writtenInJapanese()) {
             // 照样给出去，总比什么都没有强；但不存：下次点开重新生成
             log.warn("問{} 的解析还是日语（{}），这次不存", number, engine.describe());
@@ -194,6 +210,11 @@ public class ExplanationService {
         out.append('\n').append(question.answer() == null
                 ? "讲义没给正确答案。"
                 : "正确答案：" + question.answer());
+        out.append(switch (ChoiceExamples.scope(section, passage, question)) {
+            case NONE -> NO_EXAMPLES;
+            case ANSWER_ONLY -> EXAMPLE_FOR_ANSWER_ONLY;
+            case ALL -> "";
+        });
         return out.toString();
     }
 

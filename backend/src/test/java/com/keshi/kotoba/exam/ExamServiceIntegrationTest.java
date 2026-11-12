@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -128,7 +129,7 @@ class ExamServiceIntegrationTest {
     @Test
     @DisplayName("解析第一次调模型、存下；第二次直接读存的，卷子里也带着")
     void explainsOnceAndCaches() {
-        long id = examService.create(userId, "卷子", content()).id();
+        long id = examService.create(userId, "卷子", content("文脈規定")).id();
         QuestionExplanation written = new QuestionExplanation("考点", "因为", List.of(
                 new QuestionExplanation.Choice(2, "二", "不对", "", ""),
                 new QuestionExplanation.Choice(1, "一", "不对", "雨が降った", "下雨了")));
@@ -149,6 +150,33 @@ class ExamServiceIntegrationTest {
 
         assertThrows(InvalidExamException.class, () -> service.explain(userId, id, 99));
         assertThrows(ExamNotFoundException.class, () -> service.explain(createUser(), id, 55));
+    }
+
+    @Test
+    @DisplayName("读解题不留例句：模型硬凑的不存，早先存下的给出去之前摘掉，都不用再调模型")
+    void dropsExamplesOfComprehensionQuestions() throws Exception {
+        long id = examService.create(userId, "卷子", content()).id();
+        QuestionExplanation written = new QuestionExplanation("考点", "因为", List.of(
+                new QuestionExplanation.Choice(1, "一", "不对", "雨が降った", "下雨了"),
+                new QuestionExplanation.Choice(3, "三", "正确", "風が吹いた", "刮风了")));
+        StubEngine engine = new StubEngine(written);
+        ExplanationService service = new ExplanationService(examService, explanationRepository,
+                StubEngine.provide(engine), quota, json);
+
+        QuestionExplanation fresh = service.explain(userId, id, 55);
+        assertTrue(engine.lastText.endsWith(ExplanationService.NO_EXAMPLES), "要告诉模型这题不造例句");
+        assertEquals(List.of("", ""), fresh.choices().stream().map(QuestionExplanation.Choice::example).toList());
+        assertEquals("", fresh.choices().getFirst().exampleTranslation());
+        assertEquals("一", fresh.choices().getFirst().meaning(), "讲解本身不动");
+        assertFalse(jdbc.queryForObject(
+                "SELECT content FROM exam_explanation WHERE exam_id = ? AND question_number = 55",
+                String.class, id).contains("雨が降った"), "存下的就是摘过的");
+
+        explanationRepository.save(new ExamExplanation(id, 56, json.writeValueAsString(written), "old", Instant.now()));
+        engine.lastText = null;
+        assertEquals(fresh, service.explain(userId, id, 56));
+        assertNull(engine.lastText, "存过的摘掉例句就行，不重新生成");
+        assertEquals(fresh, examService.find(userId, id).explanations().get(56));
     }
 
     @Test
@@ -290,7 +318,11 @@ class ExamServiceIntegrationTest {
     }
 
     private static ExamContent content() {
-        return new ExamContent(List.of("来源：讲义"), List.of(new ExamContent.Section("問題10", "短篇阅读", List.of(
+        return content("短篇阅读");
+    }
+
+    private static ExamContent content(String sectionName) {
+        return new ExamContent(List.of("来源：讲义"), List.of(new ExamContent.Section("問題10", sectionName, List.of(
                 new ExamContent.Passage("本文（1）", List.of(
                         new ExamContent.Block("text", "⟦そんな楽器[がっき]⟧がそろった", null),
                         new ExamContent.Block("note", "誤用[ごよう]：間違[まちが]った使[つか]い方[かた]", "注")),

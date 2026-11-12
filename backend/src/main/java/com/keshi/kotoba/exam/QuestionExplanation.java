@@ -12,8 +12,9 @@ import java.util.regex.Pattern;
  * 和拆解一样，{@code @JsonPropertyDescription} 是提示词的一部分，提示词另一半在
  * {@link ExplanationService}。
  *
- * <p>例句挂在每个选项上，错误选项也有。之前存下的解析例句在最外层（只给正解造了一句），
- * 读的时候不认那两个字段，按「选项上没有例句」重新生成。
+ * <p>例句挂在选项上，错误选项是真词的也有；哪些题、哪些选项不该有由 {@link ChoiceExamples} 定。
+ * 之前存下的解析例句在最外层（只给正解造了一句），读的时候不认那两个字段，
+ * 按「选项上没有例句」重新生成。
  *
  * <p>讲解要用中文写。模型偶尔整段写成日语，{@link #writtenInJapanese()} 认得出来，
  * 这种不存、也不当成已生成的给出去。
@@ -96,9 +97,10 @@ public record QuestionExplanation(
             @JsonPropertyDescription("放进这道题为什么对、为什么不对，一两句，用中文写")
             String verdict,
 
-            @JsonPropertyDescription("用这个选项的词或句型新造一个日语例句，一句，N2 难度，不要照搬题目原句，也不要注音。"
-                    + "错误选项也要造：读音选项用它对应的那个词（写汉字）造句。"
-                    + "选项不是真实存在的词或读法、或者是读解题的内容概括，造不出例句，写空串")
+            @JsonPropertyDescription("选项是真实存在的词或句型时，用它新造一个日语例句，一句，N2 难度，不要照搬题目原句，也不要注音；"
+                    + "错误选项是真词的也造，读音选项用它对应的那个词（写汉字）造句。"
+                    + "不要硬凑：读解题的选项（对本文的概括）、不是真实存在的词或读法的选项"
+                    + "（哪怕碰巧和别的词同音）、题目末尾说了不造的，一律写空串")
             String example,
 
             @JsonPropertyDescription("example 的中文翻译，自然通顺；example 是空串这里也写空串")

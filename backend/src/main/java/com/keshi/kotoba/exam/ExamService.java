@@ -106,12 +106,16 @@ public class ExamService {
         for (ExamMark mark : markRepository.findByExamId(id)) {
             marks.put(mark.getQuestionNumber(), mark.getLevel());
         }
+        List<ExamExplanation> saved = explanationRepository.findByExamId(id);
+        ExamContent content = saved.isEmpty() ? null : content(exam);
         Map<Integer, QuestionExplanation> explanations = new TreeMap<>();
-        for (ExamExplanation saved : explanationRepository.findByExamId(id)) {
-            QuestionExplanation explanation = json.readValue(saved.getContent(), QuestionExplanation.class);
+        for (ExamExplanation row : saved) {
+            QuestionExplanation explanation = json.readValue(row.getContent(), QuestionExplanation.class);
             // 写成日语的当没生成过：页面上点「解析」会重新要一份中文的
             if (!explanation.writtenInJapanese()) {
-                explanations.put(saved.getQuestionNumber(), explanation);
+                // 早先存下的解析每个选项都硬凑了例句，给出去之前按题型摘掉
+                explanations.put(row.getQuestionNumber(),
+                        ChoiceExamples.prune(content, row.getQuestionNumber(), explanation));
             }
         }
         return response(exam, attemptRepository

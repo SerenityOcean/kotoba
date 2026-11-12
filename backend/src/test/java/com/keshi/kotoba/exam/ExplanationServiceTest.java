@@ -29,7 +29,7 @@ class ExplanationServiceTest {
         assertTrue(prompt.contains("注　誤用：間違った使い方"), prompt);
         assertTrue(prompt.contains("题目：問55　⟦行事⟧とは"), prompt);
         assertTrue(prompt.contains("1. ぎょうじ\n2. こうじ"), prompt);
-        assertTrue(prompt.endsWith("正确答案：1"), prompt);
+        assertTrue(prompt.endsWith("正确答案：1" + ExplanationService.NO_EXAMPLES), prompt);
         assertFalse(prompt.contains("["), "注音没摘干净：" + prompt);
         assertTrue(ExplanationService.describe(content, 99).isEmpty());
     }
