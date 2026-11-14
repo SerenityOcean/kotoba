@@ -20,17 +20,23 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 粘一段日语进来，拿回逐句的翻译 + 动词用法 + 语法点。
  * 拆解结果不落库 —— 想留下来的，前端勾选后走 /api/cards/import 建成卡片。
+ *
+ * <p>读的时候选中一段，还能只要译文（/translate）、就着这段提问（/ask）。
+ * 这两样和拆解算同一份配额：都是调一次模型。
  */
 @RestController
 @RequestMapping("/api/analyze")
 public class AnalyzeController {
 
     private final AnalyzeService analyzeService;
+    private final ReadingAssistService assist;
     private final AnalyzeQuota quota;
     private final DemoAccount demo;
 
-    public AnalyzeController(AnalyzeService analyzeService, AnalyzeQuota quota, DemoAccount demo) {
+    public AnalyzeController(AnalyzeService analyzeService, ReadingAssistService assist,
+                             AnalyzeQuota quota, DemoAccount demo) {
         this.analyzeService = analyzeService;
+        this.assist = assist;
         this.quota = quota;
         this.demo = demo;
     }
@@ -40,6 +46,20 @@ public class AnalyzeController {
                             @Valid @RequestBody AnalyzeRequest request) {
         quota.acquire(user.id(), demo.is(user.username()));
         return analyzeService.analyze(request.text());
+    }
+
+    @PostMapping("/translate")
+    public Translation translate(@AuthenticationPrincipal AppUserPrincipal user,
+                                 @Valid @RequestBody TranslateRequest request) {
+        quota.acquire(user.id(), demo.is(user.username()));
+        return assist.translate(request.text(), request.context());
+    }
+
+    @PostMapping("/ask")
+    public Answer ask(@AuthenticationPrincipal AppUserPrincipal user,
+                      @Valid @RequestBody AskRequest request) {
+        quota.acquire(user.id(), demo.is(user.username()));
+        return assist.ask(request.text(), request.question(), request.context(), request.history());
     }
 
     @ExceptionHandler(AnalyzeLimitException.class)

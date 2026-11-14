@@ -7,6 +7,8 @@
   --color-hai: #8a8780;
   --color-shu: #b4472e;
   --color-usu: #e8e5e0;
+  /* 浮在纸面上的东西（选区下面那条浮条）：比纸再白一点 */
+  --color-kami: #fffefb;
 
   --font-mincho: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", "Songti SC", serif;
   --font-ui: ui-sans-serif, system-ui, "Hiragino Sans", "PingFang SC", sans-serif;
@@ -24,6 +26,7 @@
   --color-hai: #8f8b84;
   --color-shu: #e07a5f;
   --color-usu: #2e2c29;
+  --color-kami: #1f1f1c;
 
   color-scheme: dark;
 }
@@ -51,6 +54,111 @@
 :root[data-theme="dark"] ::highlight(exam-mark-2) { background-color: #2f5230; }
 :root[data-theme="dark"] ::highlight(exam-mark-3) { background-color: #63303f; }
 :root[data-theme="dark"] ::highlight(exam-mark-4) { background-color: #2b4a66; }
+
+/* 读的时候引着的那一段，原文上留一层淡藍：quote 是侧栏说的那段，quote-draft 是浮条
+   展开（翻译、提问）时指的那段。selection.ts 的 pin() 画的，分开写是同上面一个缘故 */
+::highlight(quote) { background-color: rgb(38 69 110 / 0.13); }
+::highlight(quote-draft) { background-color: rgb(38 69 110 / 0.13); }
+:root[data-theme="dark"] ::highlight(quote) { background-color: rgb(142 170 212 / 0.24); }
+:root[data-theme="dark"] ::highlight(quote-draft) { background-color: rgb(142 170 212 / 0.24); }
+
+/*
+ * 选区下面的浮条（components/SentenceBar）。一个外框里叠着三面：一排按钮、提问、译文，
+ * 外框的宽高由组件量了眼下那一面写上来，这里只管过渡 —— 看上去是同一个东西在变形。
+ * data-snap 是刚出现的那一拍：直接到位，不从上一回的大小缩过来。
+ */
+.sentence-bar {
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow:
+    0 0 0 0.5px rgb(26 26 24 / 0.05),
+    0 2px 4px rgb(26 26 24 / 0.04),
+    0 14px 30px -12px rgb(26 26 24 / 0.24);
+  transition:
+    width 0.34s var(--ease),
+    height 0.34s var(--ease),
+    border-radius 0.34s var(--ease),
+    opacity 0.16s,
+    scale 0.22s var(--ease);
+}
+:root[data-theme="dark"] .sentence-bar {
+  box-shadow:
+    0 0 0 0.5px rgb(255 255 255 / 0.06),
+    0 2px 4px rgb(0 0 0 / 0.3),
+    0 16px 34px -12px rgb(0 0 0 / 0.7);
+}
+.sentence-bar[data-snap="true"] {
+  transition-property: opacity, scale;
+}
+.sentence-bar[data-open="false"] {
+  opacity: 0;
+  scale: 0.94;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.12s,
+    scale 0.12s,
+    visibility 0s 0.12s;
+}
+.sentence-bar > [data-view] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.12s,
+    visibility 0s 0.12s;
+}
+.sentence-bar > [data-view][data-on="true"] {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 0.22s 0.1s,
+    visibility 0s;
+}
+
+/* 等译文时的两道灰条 */
+@keyframes skeleton {
+  to {
+    background-position: -200% 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-usu) 25%,
+    color-mix(in srgb, var(--color-usu) 45%, transparent) 50%,
+    var(--color-usu) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton 1.1s linear infinite;
+}
+
+/* 译文、回答到了：轻轻浮上来 */
+@keyframes rise-sm {
+  from {
+    opacity: 0;
+    transform: translateY(0.3rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.animate-rise-sm {
+  animation: rise-sm 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sentence-bar,
+  .sentence-bar > [data-view] {
+    transition: none;
+  }
+  .skeleton,
+  .animate-rise-sm {
+    animation: none;
+  }
+}
 
 /* 滚过头（回弹）时露出来的是 body，和页面同色 */
 body {

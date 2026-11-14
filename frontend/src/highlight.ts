@@ -4,8 +4,9 @@ import type { HighlightColor, HighlightRange } from './api'
 
 /**
  * 卷面上涂重点。按 ⇧⌘S（Windows 是 Ctrl+Shift+S）进学习模式，再按一下退出；
- * 模式里用鼠标选中一段，选区旁边弹出几支颜色的笔，点一支就涂上，点橡皮擦掉。
- * 退出以后界面和原来一样，没有按钮，涂过的颜色照样看得见。
+ * 模式里用鼠标选中一段，选区下面那条浮条（components/SentenceBar）上多出几支颜色的笔，
+ * 点一支就涂上，点橡皮擦掉。退出以后界面和原来一样，涂过的颜色也收起来 ——
+ * 做题时卷面是干净的，再进学习模式又都在。
  *
  * 能涂的每段文字（一段本文、一道题的题干、一个选项、解析里的一句）在 DOM 上标了
  * data-hl="名字"。存的是「哪一段、从第几个字到第几个字、哪支笔」，字数按去掉振り仮名的算 ——
@@ -183,10 +184,8 @@ function touchedBy(root: Element, range: Range): Touched[] {
   return touched
 }
 
-/** 选中了能涂的字时弹出来的那排笔：钉在选区末尾下面（整页坐标），选区里有涂着的才给橡皮 */
-export interface Picker {
-  x: number
-  y: number
+/** 选中了能涂的字时浮条上多出来的那排笔：选区里有涂着的才给橡皮 */
+export interface Inks {
   canErase: boolean
 }
 
@@ -207,7 +206,6 @@ export function useHighlights(
     setHighlights(initial ?? {})
   }
   const [studying, setStudying] = useState(false)
-  const [picker, setPicker] = useState<Picker | null>(null)
 
   // 给事件回调用：回调只挂一次，要读到最新的
   const latest = useRef(highlights)
@@ -215,10 +213,10 @@ export function useHighlights(
     latest.current = highlights
   }, [highlights])
 
-  // 画。卷面自己变了（展开解析、换筛选）节点是新的，也要重画
+  // 画，只在学习模式里画。卷面自己变了（展开解析、换筛选）节点是新的，也要重画
   useEffect(() => {
     const element = root.current
-    if (!canHighlight || !element) return
+    if (!canHighlight || !element || !studying) return
     let frame = 0
     const redraw = () => {
       cancelAnimationFrame(frame)
@@ -233,7 +231,7 @@ export function useHighlights(
       for (const color of COLORS) CSS.highlights.delete(NAME(color))
     }
     // initial 一起看：卷子到了以后 root 才挂上
-  }, [root, highlights, initial])
+  }, [root, highlights, initial, studying])
 
   // ⇧⌘S 进出学习模式
   useEffect(() => {
@@ -248,68 +246,21 @@ export function useHighlights(
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  // 学习模式里：选完一段就在选区末尾弹出笔；选区没了就收起
-  useEffect(() => {
-    if (!studying) return
-    function locate() {
+  /** 这段选区能不能涂：学习模式开着、碰到了能涂的字才给笔，其余是 null */
+  const inks = useCallback(
+    (range: Range): Inks | null => {
       const element = root.current
-      const selection = window.getSelection()
-      if (!element || !selection || selection.rangeCount === 0 || selection.isCollapsed) {
-        setPicker(null)
-        return
-      }
-      const range = selection.getRangeAt(0)
+      if (!studying || !element) return null
       const touched = touchedBy(element, range)
-      const rects = [...range.getClientRects()].filter((rect) => rect.width > 0)
-      const last = rects[rects.length - 1]
-      if (touched.length === 0 || !last) {
-        setPicker(null)
-        return
-      }
-      setPicker({
-        x: last.right + window.scrollX,
-        y: last.bottom + window.scrollY,
+      if (touched.length === 0) return null
+      return {
         canErase: touched.some((t) =>
           touches(settle(latest.current[t.anchor] ?? [], t.plain), t.start, t.end),
         ),
-      })
-    }
-    // 拖着选的时候不弹，松开鼠标才弹；选区是键盘、双击改的，等它停下来再弹。
-    // 松开那一刻选区不一定已经定了（点一下空白处，旧选区要下一拍才清掉），所以都晚一拍再看
-    let pressed = false
-    let timer = 0
-    const later = (ms: number) => {
-      clearTimeout(timer)
-      timer = window.setTimeout(locate, ms)
-    }
-    const onMouseDown = () => {
-      pressed = true
-    }
-    const onMouseUp = () => {
-      pressed = false
-      later(0)
-    }
-    const onSelectionChange = () => {
-      if (window.getSelection()?.isCollapsed !== false) {
-        clearTimeout(timer)
-        setPicker(null)
-      } else if (!pressed) {
-        later(120)
       }
-    }
-    document.addEventListener('mousedown', onMouseDown)
-    document.addEventListener('mouseup', onMouseUp)
-    document.addEventListener('selectionchange', onSelectionChange)
-    // 进模式之前就选着一段：直接给笔
-    locate()
-    return () => {
-      clearTimeout(timer)
-      document.removeEventListener('mousedown', onMouseDown)
-      document.removeEventListener('mouseup', onMouseUp)
-      document.removeEventListener('selectionchange', onSelectionChange)
-      setPicker(null)
-    }
-  }, [studying, root])
+    },
+    [root, studying],
+  )
 
   /** 把选中的涂成这个颜色；color 为 null 是擦掉 */
   const apply = useCallback(
@@ -339,9 +290,8 @@ export function useHighlights(
         return next
       }
       setHighlights((all) => merge(all, changes))
-      // 选区的蓝底会盖住刚涂的颜色，收掉才看得见；笔也跟着收起
+      // 选区的蓝底会盖住刚涂的颜色，收掉才看得见；浮条跟着选区一起收起
       selection.removeAllRanges()
-      setPicker(null)
       onError(null)
       save(changes).catch((e) => {
         const restored: Highlights = {}
@@ -356,8 +306,7 @@ export function useHighlights(
   return {
     /** 学习模式开着吗 */
     studying,
-    /** 学习模式里选中了能涂的字才有 */
-    picker: studying ? picker : null,
+    inks,
     paint: apply as (color: HighlightColor) => void,
     erase: useCallback(() => apply(null), [apply]),
     leave: useCallback(() => setStudying(false), []),

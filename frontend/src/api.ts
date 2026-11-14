@@ -504,6 +504,40 @@ export async function analyzeText(text: string): Promise<Analysis> {
   return handle<Analysis>(res)
 }
 
+/** 就着同一段已经问过的一问一答，接着问时带回去 */
+export interface Exchange {
+  question: string
+  answer: string
+}
+
+/**
+ * 读的时候选中一段，只要译文。context 是它的前后文 —— 只选了半句时，
+ * 模型靠它弄清主语和指代。和拆解算同一份额度。
+ */
+export async function translateSelection(text: string, context: string): Promise<string> {
+  const res = await apiFetch('/api/analyze/translate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, context: context || null }),
+  })
+  return (await handle<{ translation: string }>(res)).translation
+}
+
+/** 就着选中的一段提问。history 是这一段之前的问答，旧的在前 */
+export async function askAboutSelection(
+  text: string,
+  question: string,
+  context: string,
+  history: Exchange[],
+): Promise<string> {
+  const res = await apiFetch('/api/analyze/ask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, question, context: context || null, history }),
+  })
+  return (await handle<{ answer: string }>(res)).answer
+}
+
 // ---- 阅读 ----------------------------------------------------------------
 
 export interface ArticleSummary {

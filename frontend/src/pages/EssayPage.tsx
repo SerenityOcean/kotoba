@@ -5,6 +5,7 @@ import { fetchLibraryEssay, fetchPackTrial } from '../api'
 import type { LibraryEssay, PackTint, PackTrial } from '../api'
 import { useAuth } from '../auth-context'
 import AnalysisPanel from '../components/AnalysisPanel'
+import SentenceBar from '../components/SentenceBar'
 import Furigana from '../components/Furigana'
 import EssayBody from '../library/EssayBody'
 import SharePoster from '../library/SharePoster'
@@ -289,11 +290,10 @@ function ReaderShell({
     setResumeAt(null)
   }
 
-  // 登录了才能拆：拆解要算在某个人的额度上
+  // 登录了才能拆解、翻译、提问：都要算在某个人的额度上
   const selection = useSelectionAnalysis()
   const canAnalyze = !!user
-  const { pending, showPanel, analyze } = selection
-  const panelOpen = canAnalyze && showPanel
+  const panelOpen = canAnalyze && selection.showPanel
 
   // 三节以上才给目录；短文章一眼就看完了
   const hasToc = sections.length >= 3
@@ -405,6 +405,7 @@ function ReaderShell({
       >
         <div className={panelOpen ? 'pb-[72vh] xl:pb-0' : ''}>
           <article
+            data-quotable
             style={{
               fontSize: `${size / 16}rem`,
               ['--body' as string]: sans ? 'var(--font-ui)' : 'var(--font-mincho)',
@@ -451,19 +452,8 @@ function ReaderShell({
         {panelOpen && <AnalysisPanel selection={selection} />}
       </div>
 
-      {/* 选中了日语但还没拆：底部浮一条按钮，点了才花额度 */}
-      {canAnalyze && pending !== '' && !showPanel && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-usu bg-washi/95 px-4 py-3 backdrop-blur-sm sm:px-8">
-          <div className="mx-auto max-w-2xl">
-            <button
-              onClick={() => analyze(pending)}
-              className="rounded-sm bg-ai px-5 py-2.5 text-sm text-washi transition hover:opacity-85"
-            >
-              拆解选中的 {pending.length} 字
-            </button>
-          </div>
-        </div>
-      )}
+      {/* 选中了一段：选区下面弹出浮条，点了才花额度 */}
+      {canAnalyze && <SentenceBar selection={selection} />}
     </div>
   )
 }

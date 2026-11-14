@@ -21,10 +21,10 @@ import { useAuth } from '../auth-context'
 import ExamText from '../components/ExamText'
 import Furigana from '../components/Furigana'
 import AnalysisPanel from '../components/AnalysisPanel'
-import HighlightPicker from '../components/HighlightPicker'
+import SentenceBar from '../components/SentenceBar'
+import StudyBadge from '../components/StudyBadge'
 import { useSelectionAnalysis } from '../selection'
 import { useHighlights } from '../highlight'
-import type { SelectionAnalysis } from '../selection'
 import { examQuestions, formatClock } from '../exam'
 import {
   fromProgress,
@@ -97,7 +97,7 @@ export default function ExamPage() {
  * 卷面还是按原卷的顺序排：大题 → 本文 → 小题。底下钉着一条题号，
  * 对错和难度一眼看得到，可以只看错题或某一档难度的题。
  *
- * 和阅读页一样，选中任意一段（本文、题干、选项都行）就能就地拆解。
+ * 和阅读页一样，选中任意一段（本文、题干、选项、解析都行）就能就地拆解、翻译、提问。
  */
 function ExamPaper({ examId }: { examId: number }) {
   const { user } = useAuth()
@@ -124,7 +124,8 @@ function ExamPaper({ examId }: { examId: number }) {
   const [furigana, setFurigana] = useState(readFurigana)
   const selection = useSelectionAnalysis()
   const { showPanel } = selection
-  // 涂重点：⇧⌘S 进出学习模式，模式里选中一段弹出笔。平时界面上没有入口，涂色画在卷面这一层上
+  // 涂重点：⇧⌘S 进出学习模式，模式里选中一段，浮条上多出几支笔。平时界面上没有入口，
+  // 涂过的颜色也只在模式里看得见，画在卷面这一层上
   const paper = useRef<HTMLDivElement>(null)
   const saveHighlights = useCallback(
     (changes: Record<string, HighlightRange[]>) => saveExamHighlights(examId, changes),
@@ -426,7 +427,7 @@ function ExamPaper({ examId }: { examId: number }) {
 
         {/* 关掉振り仮名要用 display: none —— 只是藏起来的话，读音比汉字长的词
             （学習者 がくしゅうしゃ）汉字之间还会被撑开。行高是固定的，切换时不会上下跳 */}
-        <div ref={paper} className={furigana ? '' : '[&_rt]:hidden'}>
+        <div ref={paper} data-quotable className={furigana ? '' : '[&_rt]:hidden'}>
           {exam.content.sections.map((section, s) => {
             const passages = section.passages.filter((p) => p.questions.some(matches))
             if (passages.length === 0) return null
@@ -477,7 +478,6 @@ function ExamPaper({ examId }: { examId: number }) {
           filter={active}
           matches={matches}
           onFilter={(next) => setFilter(next === active ? null : next)}
-          selection={selection}
           error={error}
           onRetryRecord={finished && recorded === null ? () => record(answers) : null}
           onRestart={restart}
@@ -485,7 +485,8 @@ function ExamPaper({ examId }: { examId: number }) {
       </div>
 
       {showPanel && <AnalysisPanel selection={selection} />}
-      <HighlightPicker highlighter={highlighter} />
+      <SentenceBar selection={selection} highlighter={highlighter} />
+      <StudyBadge highlighter={highlighter} />
     </div>
   )
 }
@@ -608,7 +609,8 @@ function PassageView({
   }
 
   return (
-    <article className="mt-12">
+    // 提问、翻译时带给模型的前后文取这一篇：本文连同它的几道题
+    <article data-context className="mt-12">
       {passage.label && <p className="mb-4 text-xs tracking-widest text-hai">{passage.label}</p>}
 
       {/* 行高给振假名留空隙；正文限宽，一行的字数不至于读着累 */}
@@ -1020,7 +1022,6 @@ function PracticeBar({
   filter,
   matches,
   onFilter,
-  selection,
   error,
   onRetryRecord,
   onRestart,
@@ -1033,13 +1034,11 @@ function PracticeBar({
   filter: Filter
   matches: (question: ExamQuestion) => boolean
   onFilter: (filter: Filter) => void
-  selection: SelectionAnalysis
   error: string | null
   /** 做完了但成绩没记上，给个重试；其余时候是 null */
   onRetryRecord: (() => void) | null
   onRestart: () => void
 }) {
-  const { pending, showPanel, analyze } = selection
   // 重做会清掉这一遍的答案，先问一句
   const [confirming, setConfirming] = useState(false)
 
@@ -1106,15 +1105,6 @@ function PracticeBar({
         </ol>
 
         <div className="ml-auto flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 text-xs text-hai">
-          {pending !== '' && !showPanel && (
-            <button
-              onClick={() => analyze(pending)}
-              className="rounded-sm bg-ai px-3 py-1.5 text-washi transition hover:opacity-85"
-            >
-              拆解选中的 {pending.length} 字
-            </button>
-          )}
-
           <span className="tabular-nums">
             做了 <span className="text-sumi">{answeredCount}</span> / {exam.questionCount}
             {counts.right + counts.wrong > 0 && (

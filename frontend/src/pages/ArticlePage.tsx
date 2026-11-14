@@ -4,12 +4,13 @@ import { fetchArticle, fetchArticleNeighbors, markArticlesRead } from '../api'
 import type { Article, ArticleNeighbors } from '../api'
 import Furigana from '../components/Furigana'
 import AnalysisPanel from '../components/AnalysisPanel'
+import SentenceBar from '../components/SentenceBar'
 import { useSelectionAnalysis } from '../selection'
 import { readingListPath } from '../reading'
 
 /**
- * 读文章。选中看不懂的一段就地拆解，勾一勾建成卡片 ——
- * 读、查、记在同一个页面里闭环。
+ * 读文章。选中看不懂的一段，选区下面弹出浮条：就地拆解、翻译、提问；
+ * 拆出来的勾一勾建成卡片 —— 读、查、记在同一个页面里闭环。
  */
 export default function ArticlePage() {
   const { id } = useParams()
@@ -19,7 +20,7 @@ export default function ArticlePage() {
   const [error, setError] = useState<string | null>(null)
   const [neighbors, setNeighbors] = useState<ArticleNeighbors | null>(null)
   const selection = useSelectionAnalysis()
-  const { pending, showPanel, analyze, close } = selection
+  const { showPanel, close } = selection
 
   useEffect(() => {
     if (!id) return
@@ -68,7 +69,7 @@ export default function ArticlePage() {
         {notice && <p className="mt-3 text-sm text-shu">{notice}</p>}
 
         <article className="mt-5">
-          <h1 lang="ja" className="font-mincho text-3xl leading-[1.9] sm:text-4xl">
+          <h1 lang="ja" data-quotable className="font-mincho text-3xl leading-[1.9] sm:text-4xl">
             <Furigana text={article.title} />
           </h1>
           <p className="mt-4 text-xs text-hai">
@@ -93,7 +94,11 @@ export default function ArticlePage() {
           </p>
 
           {/* 行高给振假名留空隙，否则假名会贴到上一行；正文限宽保证一行的字数不至于读着累 */}
-          <div lang="ja" className="mt-10 max-w-[38rem] font-mincho text-lg leading-[2.4] whitespace-pre-wrap sm:text-xl">
+          <div
+            lang="ja"
+            data-quotable
+            className="mt-10 max-w-[38rem] font-mincho text-lg leading-[2.4] whitespace-pre-wrap sm:text-xl"
+          >
             <Furigana text={article.body} />
           </div>
         </article>
@@ -127,21 +132,10 @@ export default function ArticlePage() {
             )}
           </nav>
         )}
-
-        {/* 选中了但还没拆：浮一条出来，点了才花钱。面板开着时按钮挪到面板顶部 */}
-        {pending !== '' && !showPanel && (
-          <div className="sticky bottom-0 -mx-4 mt-10 border-t border-usu bg-washi px-4 py-4 sm:-mx-8 sm:px-8">
-            <button
-              onClick={() => analyze(pending)}
-              className="rounded-sm bg-ai px-5 py-2.5 text-sm text-washi transition hover:opacity-85"
-            >
-              拆解选中的 {pending.length} 字
-            </button>
-          </div>
-        )}
       </div>
 
       {showPanel && <AnalysisPanel selection={selection} />}
+      <SentenceBar selection={selection} />
     </div>
   )
 }
